@@ -1,0 +1,23 @@
+{
+  "name": "rest-api-benchmark_k6",
+  "version": "1.0.0",
+  "description": "1. Javascript \t1. Node.js v22.20.0 \t2. Bun v1.2.22 \t3. Deno v2.5.2 2. Python \t1. Python v2.7.18 \t2. Python v3.13.7 3. PHP v8.4.13 4. Golang v1.25.1 5. Rust v1.90.0 6. C++ v23 7. C# v13 8. Java \t1. Java 17 \t2. Java 21 \t3. Java 23 9. Elixir v1.18 10. Perl v5.42.0 11. Scala v3.7.3 ### Server Specs -  8vCPU, 32GB RAM - Ubuntu Server 24.04.3 LTS \t- Containers (ubuntu:24.04): \t\t1. (1vCPU, 2GB RAM) \t\t2. (2vCPU, 4GB RAM) \t\t3. (4vCPU, 8GB RAM) \t- Pin CPUs --cpuset-cpus \t- Memory limits  -m ### Tests 1. Hello World 2. JSON Serve (with file reading & writting) 3. Pi Digits 4. n-bodys 5. regex-redux ### Runs Settings 1. Concurrency 5 | Time 60 seconds (Warmup run - JIT warm-up, caching, cold start issues) 2. 60 seconds break 3. Concurrency 1 | Time 60 seconds 4. 60 seconds break 5. Concurrency 100 | Time 60 seconds 6. 60 seconds break 7. Concurrency 1000 | Time 60 seconds 8. 60 seconds break 9. Concurrency 5000 | Time 60 seconds 10. 60 seconds break 11. Concurrency 10.000 | Time 60 seconds",
+  "homepage": "https://github.com/joaosantos99/rest-api-benchmark#readme",
+  "bugs": {
+    "url": "https://github.com/joaosantos99/rest-api-benchmark/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joaosantos99/rest-api-benchmark.git"
+  },
+  "license": "ISC",
+  "author": "João Santos",
+  "type": "commonjs",
+  "main": "http-bench.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "k6": "^0.0.0"
+  }
+}

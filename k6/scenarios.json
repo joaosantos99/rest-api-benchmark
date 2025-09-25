@@ -1,0 +1,8 @@
+[
+  {"name":"warmup","vus":5,"dur":"60s"},
+  {"name":"c1","vus":1,"dur":"60s"},
+  {"name":"c100","vus":100,"dur":"60s"},
+  {"name":"c1000","vus":1000,"dur":"60s"},
+  {"name":"c5000","vus":5000,"dur":"60s"},
+  {"name":"c10000","vus":10000,"dur":"60s"}
+]
