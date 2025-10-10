@@ -8,7 +8,7 @@ const VUS = Number(__ENV.VUS || 1);
 
 export const options = {
   vus: VUS,
-  durations: DURATION,
+  duration: DURATION,
   thresholds: {
     http_req_failed: ['rate<0.01'],
     http_req_duration: ['p(95)<2000']

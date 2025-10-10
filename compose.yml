@@ -1,0 +1,25 @@
+x-size: &size
+  deploy:
+    resources:
+      limits:
+        cpus: "${CPUS}"
+        memory: "${MEM}"
+
+x-common: &common
+  image: ${IMAGE}
+  build:
+    context: ./services/${SERVICE}
+    dockerfile: Dockerfile
+  environment:
+    PORT: "8080"
+    TEST_MODE: "${TEST_MODE}"
+  ports:
+    - "${HOST_PORT:-8080}:8080"
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=2g
+  <<: *size
+
+services:
+  sut:
+    <<: *common
+    cpuset: "${CPUSET}"
