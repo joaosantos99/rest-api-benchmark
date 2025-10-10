@@ -6,7 +6,8 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/hello-world", tests.HelloWorld)
+	http.HandleFunc("/api/hello-world", tests.HelloWorld)
+	http.HandleFunc("/api/pi-digits", tests.PiDigits)
 
 	http.ListenAndServe(":8080", nil)
 }
