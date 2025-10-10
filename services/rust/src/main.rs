@@ -14,7 +14,8 @@ async fn main() {
         .unwrap_or(8080);
 
     let app = Router::new()
-        .route("/api/hello-world", get(tests::hello_world::handler));
+        .route("/api/hello-world", get(tests::hello_world::handler))
+        .route("/api/pi-digits", get(tests::pi_digits::handler));
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
