@@ -1,5 +1,6 @@
 import helloWorld from "./tests/hello-world";
 import piDigits from "./tests/pi-digits";
+import nbody from "./tests/n-body";
 
 const port = process.env.PORT || 8080;
 
@@ -8,6 +9,7 @@ Bun.serve({
   routes: {
     '/api/hello-world': () => helloWorld(),
     '/api/pi-digits': () => piDigits(),
+    '/api/n-body': () => nbody(),
   },
 });
 
