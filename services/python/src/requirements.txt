@@ -1,0 +1,2 @@
+# No external dependencies needed for this benchmark
+# Using only Python standard library
