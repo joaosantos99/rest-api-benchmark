@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LANGS=(node bun deno golang rust)
-TESTS=(hello pi-digits n-body)
+LANGS=(node bun deno golang rust python cpp csharp java17 java21 elixir perl scala php)
+TESTS=(hello n-body)
 SIZES=("1 2g 0" "2 4g 0-1" "4 8g 0-3") # CPUS MEM CPUSET
-REPS=3
-BREAK=60
+REPS=1
+BREAK=1
 
 mkdir -p results/raw
 
