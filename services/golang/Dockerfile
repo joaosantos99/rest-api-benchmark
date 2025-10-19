@@ -4,7 +4,7 @@ FROM golang:1.25.1-bookworm AS builder
 WORKDIR /app
 
 # Copy source and build
-COPY . .
+COPY src/ .
 RUN go mod init bench || true
 RUN go build -o server .
 

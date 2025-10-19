@@ -4,10 +4,10 @@ FROM oven/bun:1.2.22 AS base
 WORKDIR /app
 
 # Copy source
-COPY . .
+COPY src/ .
 
 # Optional: preinstall deps if package.json exists
-RUN if [ -f package.json ]; then bun install --ci; fi
+RUN if [ -f package.json ]; then bun install; fi
 
 EXPOSE 8080
-CMD ["bun", "src/index.ts"]
+CMD ["bun", "index.ts"]
