@@ -15,7 +15,7 @@ A comprehensive performance benchmarking suite comparing REST API implementation
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/joaosantos99/rest-api-benchmark
    cd rest-api-benchmark
    ```
 
