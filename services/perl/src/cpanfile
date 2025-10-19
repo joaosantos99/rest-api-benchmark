@@ -1,0 +1,3 @@
+requires 'Plack' => '1.0047';
+requires 'HTTP::Server::PSGI' => '0.020';
+requires 'JSON' => '4.10';
