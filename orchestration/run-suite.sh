@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LANGS=(bun deno golang rust)
-TESTS=(hello pidigits nbody)
-SIZES=("1 2g 0" "2 4g 0-1" "4 8g 0-3" "8 16g 0-7") # CPUS MEM CPUSET
+LANGS=(node bun deno golang rust)
+TESTS=(hello pi-digits n-body)
+SIZES=("1 2g 0" "2 4g 0-1" "4 8g 0-3") # CPUS MEM CPUSET
 REPS=3
 BREAK=60
 
@@ -14,10 +14,10 @@ for scen in $(jq -c '.[]' k6/scenarios.json); do
   VUS=$(jq -r '.vus' <<<"$scen")
   DUR=$(jq -r '.dur' <<<"$scen")
 
-  for rep in $(seq 1 $REPS); do
+  for row in "${SIZES[@]}"; do
     for lang in "${LANGS[@]}"; do
       for test in "${TESTS[@]}"; do
-        for row in "${SIZES[@]}"; do
+        for rep in $(seq 1 $REPS); do
           read CPUS MEM CPUSET <<<"$row"
 
           export IMAGE="bench/${lang}"
@@ -34,7 +34,7 @@ for scen in $(jq -c '.[]' k6/scenarios.json); do
           if [[ "$test" == "hello" ]]; then
             URL_PATH="/api/hello-world"
           else
-            URL_PATH="/${test}"
+            URL_PATH="/api/${test}"
           fi
 
           TARGET_URL="http://127.0.0.1:${HOST_PORT}${URL_PATH}"
