@@ -1,60 +1,208 @@
 # REST API Benchmarks
-### Languages
-1. Javascript
-	1. Node.js v22.20.0
-	2. Bun v1.2.22
-	3. Deno v2.5.2
-2. Python
-	1. Python v2.7.18
-	2. Python v3.13.7
-3. PHP v8.4.13
-4. Golang v1.25.1
-5. Rust v1.90.0
-6. C++ v23
-7. C# v13
-8. Java
-	1. Java 17
-	2. Java 21
-	3. Java 23
-9. Elixir v1.18
-10. Perl v5.42.0
-11. Scala v3.7.3
-### Server Specs
--  8vCPU, 32GB RAM - Ubuntu Server 24.04.3 LTS
-	- Containers (ubuntu:24.04):
-		1. (1vCPU, 2GB RAM)
-		2. (2vCPU, 4GB RAM)
-		3. (4vCPU, 8GB RAM)
-	- Pin CPUs --cpuset-cpus
-	- Memory limits  -m
-### Tests
-1. Hello World
-2. JSON Serve (with file reading & writting)
-3. Pi Digits
-4. n-bodys
-5. regex-redux
-### Runs Settings
-1. Concurrency 5 | Time 60 seconds (Warmup run - JIT warm-up, caching, cold start issues)
-2. 60 seconds break
-3. Concurrency 1 | Time 60 seconds
-4. 60 seconds break
-5. Concurrency 100 | Time 60 seconds
-6. 60 seconds break
-7. Concurrency 1000 | Time 60 seconds
-8. 60 seconds break
-9. Concurrency 5000 | Time 60 seconds
-10. 60 seconds break
-11. Concurrency 10.000 | Time 60 seconds
 
-Each run will take 10 minutes and 30 seconds
-Each language will run 5 tests in 3 difference containers, that will take 2 hours and 45 minutes
-For fairness each languages will run 3 times all tests on a locally and a fourth test (hello world only) over the internet
-### Metrics
-- **Throughput** (req/s)
-- **Latency distribution** (p50/p95/p99)
-- **Memory usage** (peak & steady state)
-- **CPU utilisation** (per vCPU container)
-- **Error rate** (timeouts, refused connections)
-### Tools
-- K6
-- Docker
+A comprehensive performance benchmarking suite comparing REST API implementations across multiple programming languages and frameworks.
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Docker** (with Docker Compose)
+- **K6** (for load testing)
+- **Node.js** (for result summarization)
+- **Make** (optional, for convenience commands)
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd rest-api-benchmark
+   ```
+
+2. **Install K6:**
+   ```bash
+   # macOS
+   brew install k6
+
+   # Ubuntu/Debian
+   sudo apt-get install k6
+
+   # Or download from: https://k6.io/docs/getting-started/installation/
+   ```
+
+3. **System Tuning (Optional but Recommended):**
+   ```bash
+   make tune
+   # This runs system optimizations for better benchmark accuracy
+   ```
+
+### Running Benchmarks
+
+1. **Build all services:**
+   ```bash
+   make build
+   # or: docker compose build
+   ```
+
+2. **Run the complete benchmark suite:**
+   ```bash
+   make run
+   # or: bash orchestration/run-suite.sh
+   ```
+
+3. **Generate summary reports:**
+   ```bash
+   make summarize
+   # or: node utils/summarize.mjs
+   ```
+
+4. **Clean up:**
+   ```bash
+   make clean
+   # Removes all containers and results
+   ```
+
+### Individual Service Testing
+
+To test a specific language/service:
+
+```bash
+# Set environment variables
+export IMAGE="bench/node"  # or bun, deno, golang, rust, python, etc.
+export SERVICE="node"
+export TEST_MODE="hello"   # or n-body, pi-digits
+export CPUS="2"
+export MEM="4g"
+export CPUSET="0-1"
+export HOST_PORT=18080
+
+# Start the service
+docker compose up --build -d sut
+
+# Run K6 test
+k6 run k6/http-bench.js
+
+# Clean up
+docker compose down -v
+```
+
+## 📊 Languages & Tests Matrix
+
+**Legend:** ✅ Working | 🚧 Work In Progress | ❌ Not Implemented
+
+| Language | Version | Hello World | N-Body | Pi Digits | JSON Serve | Regex Redux | Status |
+|----------|---------|-------------|--------|-----------|------------|-------------|--------|
+| Node.js | v22.20.0 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Bun | v1.2.22 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Deno | v2.5.2 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Go | v1.25.1 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Rust | v1.90.0 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| C++ | v23 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| C# | v13 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Java 17 | v17 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Java 21 | v21 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Scala | v3.7.3 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Python | v3.13.7 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| PHP | v8.4.13 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Perl | v5.42.0 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+| Elixir | v1.18 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+
+## 🧪 Test Descriptions
+
+### 1. Hello World
+Simple HTTP endpoint returning a JSON response with "Hello, World!" message. Tests basic request/response overhead.
+
+### 2. N-Body Simulation
+Computational physics simulation calculating gravitational forces between celestial bodies. Tests CPU-intensive operations.
+
+### 3. Pi Digits
+Mathematical computation calculating digits of π using various algorithms. Tests mathematical computation performance.
+
+### 4. JSON Serve
+HTTP endpoint that reads and writes JSON files to/from the filesystem. Tests I/O operations and file handling performance.
+
+### 5. Regex Redux
+Regular expression pattern matching and text processing operations. Tests string manipulation and regex engine performance.
+
+## ⚙️ Benchmark Configuration
+
+### Server Specifications
+- **Host**: 8vCPU, 32GB RAM - Ubuntu Server 24.04.3 LTS
+- **Containers**: Ubuntu 24.04 base image with resource constraints:
+  - 1vCPU, 2GB RAM
+  - 2vCPU, 4GB RAM
+  - 4vCPU, 8GB RAM
+- **CPU Pinning**: `--cpuset-cpus` for consistent performance
+- **Memory Limits**: `-m` for controlled memory allocation
+
+### Load Testing Scenarios
+
+| Scenario | Virtual Users | Duration | Purpose |
+|----------|---------------|----------|---------|
+| Warmup | 5 | 60s | JIT warm-up, caching, cold start |
+| Light Load | 1 | 60s | Single user baseline |
+| Medium Load | 100 | 60s | Typical web application load |
+| High Load | 1,000 | 60s | High-traffic scenarios |
+| Very High Load | 5,000 | 60s | Stress testing |
+| Extreme Load | 10,000 | 60s | Breaking point analysis |
+
+**Total Runtime**: ~10.5 minutes per language per container configuration
+
+## 📈 Metrics Collected
+
+- **Throughput**: Requests per second (req/s)
+- **Latency Distribution**: p50, p95, p99 percentiles
+- **Memory Usage**: Peak and steady-state consumption
+- **CPU Utilization**: Per vCPU container usage
+- **Error Rate**: Timeouts, connection refused, HTTP errors
+- **Response Time**: Average, minimum, maximum response times
+
+## 🛠️ Tools & Technologies
+
+- **[K6](https://k6.io/)**: Load testing and performance monitoring
+- **[Docker](https://www.docker.com/)**: Containerization and resource isolation
+- **[Docker Compose](https://docs.docker.com/compose/)**: Multi-container orchestration
+- **Node.js**: Result processing and summarization
+
+## 📁 Project Structure
+
+```
+rest-api-benchmark/
+├── services/           # Language-specific implementations
+│   ├── node/          # Node.js service
+│   ├── bun/           # Bun service
+│   ├── deno/          # Deno service
+│   ├── golang/        # Go service
+│   ├── rust/          # Rust service
+│   ├── python/        # Python service
+│   └── ...            # Other languages
+├── k6/                # Load testing scripts
+├── orchestration/     # Benchmark orchestration
+├── results/           # Benchmark results
+├── utils/             # Utility scripts
+└── compose.yml        # Docker Compose configuration
+```
+
+## 🔧 Customization
+
+### Adding New Languages
+1. Create a new directory in `services/`
+2. Implement the required test endpoints
+3. Add Dockerfile and build configuration
+4. Update the orchestration script
+
+### Modifying Test Scenarios
+Edit `k6/scenarios.json` to adjust:
+- Virtual user counts
+- Test durations
+- Load patterns
+
+### Resource Configuration
+Modify `orchestration/run-suite.sh` to change:
+- CPU/memory allocations
+- Container configurations
+- Test repetitions
+
+## 📊 Results
+
+Results are stored in `results/raw/` as JSON files containing detailed metrics. Use `make summarize` to generate human-readable reports.
