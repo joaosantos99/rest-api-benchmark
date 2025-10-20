@@ -2,7 +2,7 @@ use axum::response::Response;
 use num_bigint::BigInt;
 
 pub async fn handler() -> Response<String> {
-    const N: usize = 10_000; // number of digits to compute
+    const N: usize = 1000; // number of digits to compute
 
     let mut i = 0;
     let mut k = 0;

@@ -8,7 +8,7 @@ import (
 )
 
 func PiDigits(w http.ResponseWriter, r *http.Request) {
-	const n = 10000 // number of digits to compute
+	const n = 1000 // number of digits to compute
 	i := 0
 	k := 0
 	d := 0

@@ -1,5 +1,5 @@
 const piDigits = () => {
-  const n = 10_000; // fixed number of digits
+  const n = 1000; // fixed number of digits
 
   let i = 0;
   let k = 0;

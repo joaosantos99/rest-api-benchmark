@@ -92,17 +92,17 @@ docker compose down -v
 
 | Language | Version | Hello World | N-Body | Pi Digits | JSON Serve | Regex Redux | Status |
 |----------|---------|-------------|--------|-----------|------------|-------------|--------|
-| Node.js | v22.20.0 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
-| Bun | v1.2.22 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
-| Deno | v2.5.2 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
-| Go | v1.25.1 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
-| Rust | v1.90.0 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Node.js | v22.20.0 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Bun | v1.2.22 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Deno | v2.5.2 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Go | v1.25.1 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Rust | v1.90.0 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | C++ | v23 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | C# | v13 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | Java 17 | v17 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | Java 21 | v21 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | Scala | v3.7.3 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
-| Python | v3.13.7 | ✅ | ✅ | 🚧 | ❌ | ❌ | Partial |
+| Python | v3.13.7 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | PHP | v8.4.13 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | Perl | v5.42.0 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 | Elixir | v1.18 | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |

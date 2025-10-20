@@ -1,5 +1,5 @@
 def pi_digits():
-    n = 10_000  # fixed number of digits
+    n = 1000  # fixed number of digits
 
     i = 0
     k = 0
