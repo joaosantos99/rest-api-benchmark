@@ -4,6 +4,7 @@ import helloWorld from './tests/hello-world.js';
 import piDigits from './tests/pi-digits.js';
 import nbody from './tests/n-body.js';
 import regexRedux from './tests/regex-redux.js';
+import jsonSerde from './tests/json-serde.js';
 
 const port = process.env.PORT || 8080;
 
@@ -41,6 +42,11 @@ const server = createServer((req, res) => {
       const regexReduxResponse = regexRedux();
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(regexReduxResponse);
+      break;
+    case '/api/json-serde':
+      const jsonSerdeResponse = jsonSerde();
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(jsonSerdeResponse);
       break;
     default:
       res.writeHead(404, { 'Content-Type': 'text/plain' });

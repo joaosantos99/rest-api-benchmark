@@ -90,9 +90,9 @@ docker compose down -v
 
 **Legend:** ✅ Working | 🚧 Work In Progress | ❌ Not Implemented
 
-| Language | Version | Hello World | N-Body | Pi Digits | JSON Serve | Regex Redux | Status |
+| Language | Version | Hello World | N-Body | Pi Digits | JSON Serde | Regex Redux | Status |
 |----------|---------|-------------|--------|-----------|------------|-------------|--------|
-| Node.js | v22.20.0 | ✅ | ✅ | ✅ | ❌ | ✅ | Partial |
+| Node.js | v22.20.0 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Bun | v1.2.22 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Deno | v2.5.2 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Go | v1.25.1 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
@@ -118,8 +118,8 @@ Computational physics simulation calculating gravitational forces between celest
 ### 3. Pi Digits
 Mathematical computation calculating digits of π using various algorithms. Tests mathematical computation performance.
 
-### 4. JSON Serve
-HTTP endpoint that reads and writes JSON files to/from the filesystem. Tests I/O operations and file handling performance.
+### 4. JSON Serde
+HTTP endpoint that performs JSON serialization and deserialization entirely in memory.
 
 ### 5. Regex Redux
 Regular expression pattern matching and text processing operations. Tests string manipulation and regex engine performance.
