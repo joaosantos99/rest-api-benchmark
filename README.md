@@ -92,7 +92,7 @@ docker compose down -v
 
 | Language | Version | Hello World | N-Body | Pi Digits | JSON Serve | Regex Redux | Status |
 |----------|---------|-------------|--------|-----------|------------|-------------|--------|
-| Node.js | v22.20.0 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Node.js | v22.20.0 | ✅ | ✅ | ✅ | ❌ | ✅ | Partial |
 | Bun | v1.2.22 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Deno | v2.5.2 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Go | v1.25.1 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |

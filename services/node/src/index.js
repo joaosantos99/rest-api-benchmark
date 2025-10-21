@@ -3,6 +3,7 @@ import { URL } from 'url';
 import helloWorld from './tests/hello-world.js';
 import piDigits from './tests/pi-digits.js';
 import nbody from './tests/n-body.js';
+import regexRedux from './tests/regex-redux.js';
 
 const port = process.env.PORT || 8080;
 
@@ -35,6 +36,11 @@ const server = createServer((req, res) => {
       const nbodyResponse = nbody();
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end(nbodyResponse);
+      break;
+    case '/api/regex-redux':
+      const regexReduxResponse = regexRedux();
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(regexReduxResponse);
       break;
     default:
       res.writeHead(404, { 'Content-Type': 'text/plain' });
