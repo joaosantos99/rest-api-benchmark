@@ -1,0 +1,512 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: read
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+      release-notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            # Check if it's a pre-release (contains alpha, beta, rc)
+            if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "Pre-release: $IS_PRERELEASE"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Get the latest tag before this one
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "${{ steps.version.outputs.version }}" | head -n1)
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "notes=Initial release of REST API Benchmarks" >> $GITHUB_OUTPUT
+          else
+            # Generate changelog between tags
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..${{ steps.version.outputs.version }} --no-merges)
+            
+            # Create comprehensive release notes
+            cat > release_notes.md << EOF
+          # REST API Benchmarks ${{ steps.version.outputs.version }}
+          
+          ## What's Changed
+          
+          $CHANGELOG
+          
+          ## Supported Languages
+          
+          - **JavaScript Runtimes**: Node.js v22.20.0, Bun v1.2.22, Deno v2.5.2
+          - **Systems Languages**: Rust v1.90.0, Go v1.25.1, C++ v23
+          - **JVM Languages**: Java 17, Java 21, Scala v3.7.3
+          - **Dynamic Languages**: Python v3.13.7, PHP v8.4.13, Perl v5.42.0
+          - **Functional Languages**: Elixir v1.18
+          - **Microsoft Stack**: C# v13
+          
+          ## Test Benchmarks
+          
+          - ✅ **Hello World**: Basic HTTP response overhead
+          - ✅ **N-Body Simulation**: CPU-intensive physics computation
+          - ✅ **Pi Digits**: Mathematical computation with arbitrary precision
+          - 🚧 **JSON Serde**: JSON serialization/deserialization (partial implementation)
+          - 🚧 **Regex Redux**: Regular expression processing (partial implementation)
+          
+          ## Performance Testing
+          
+          - **Load Scenarios**: 1, 100, 1K, 5K, 10K concurrent users
+          - **Resource Configurations**: 1vCPU/2GB, 2vCPU/4GB, 4vCPU/8GB
+          - **Metrics**: Throughput, latency percentiles, memory usage, CPU utilization
+          
+          ## Download
+          
+          ### Container Images
+          
+          All benchmark service images are available at:
+          \`ghcr.io/${{ github.repository }}/bench-{language}:${{ steps.version.outputs.version }}\`
+          
+          ### Quick Start
+          
+          \`\`\`bash
+          # Clone the repository
+          git clone https://github.com/${{ github.repository }}.git
+          cd rest-api-benchmark
+          
+          # Run setup
+          ./scripts/setup.sh
+          
+          # Run full benchmark suite
+          make run
+          
+          # Generate results summary
+          make summarize
+          \`\`\`
+          
+          ## Documentation
+          
+          - [Setup Guide](README.md#quick-start)
+          - [Contributing Guidelines](CONTRIBUTING.md)
+          - [Performance Methodology](README.md#benchmark-configuration)
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ steps.version.outputs.version }}
+          EOF
+          
+            # Set output (GitHub Actions has size limits, so we'll upload as artifact too)
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            cat release_notes.md >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release_notes.md
+          retention-days: 30
+
+  build-and-push-images:
+    name: Build and Push Release Images
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - node
+          - bun
+          - deno
+          - golang
+          - rust
+          - python
+          - cpp
+          - csharp
+          - java17
+          - java21
+          - scala
+          - php
+          - perl
+          - elixir
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/bench-${{ matrix.service }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.prepare-release.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare-release.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.prepare-release.outputs.version }}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            VERSION=${{ needs.prepare-release.outputs.version }}
+
+  run-release-benchmarks:
+    name: Run Release Benchmarks
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-and-push-images]
+    strategy:
+      matrix:
+        service: [node, rust, golang, python, java21]
+        test: [hello, n-body, pi-digits]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install K6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: System tuning
+        run: |
+          sudo bash utils/sysctl.sh || true
+
+      - name: Run comprehensive benchmark
+        run: |
+          export IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/bench-${{ matrix.service }}:${{ needs.prepare-release.outputs.version }}"
+          export SERVICE="${{ matrix.service }}"
+          export TEST_MODE="${{ matrix.test }}"
+          export CPUS="2"
+          export MEM="4g"
+          export CPUSET="0-1"
+          export HOST_PORT=18080
+
+          mkdir -p results/raw
+
+          # Run extended benchmark scenarios
+          echo '[
+            {"name":"c1","vus":1,"dur":"60s"},
+            {"name":"c10","vus":10,"dur":"60s"},
+            {"name":"c100","vus":100,"dur":"60s"},
+            {"name":"c1000","vus":1000,"dur":"60s"}
+          ]' | jq -c '.[]' | while read -r scenario; do
+            NAME=$(echo "$scenario" | jq -r '.name')
+            VUS=$(echo "$scenario" | jq -r '.vus')
+            DUR=$(echo "$scenario" | jq -r '.dur')
+
+            echo "==> Release benchmark: ${{ matrix.service }} ${{ matrix.test }} scenario:${NAME}"
+            
+            docker compose up -d sut
+            sleep 5
+
+            case "${{ matrix.test }}" in
+              "hello") URL_PATH="/api/hello-world" ;;
+              "n-body") URL_PATH="/api/n-body" ;;
+              "pi-digits") URL_PATH="/api/pi-digits" ;;
+            esac
+
+            OUT="results/raw/${{ matrix.service }}_${{ matrix.test }}_2vCPU_rep1_${NAME}.json"
+
+            TARGET_URL="http://127.0.0.1:${HOST_PORT}${URL_PATH}" \
+            VUS=${VUS} \
+            DURATION=${DUR} \
+              k6 run \
+                --summary-trend-stats="p(50),p(95),p(99),min,max,avg" \
+                --summary-export "${OUT%.json}_summary.json" \
+                k6/http-bench.js
+
+            docker compose down -v
+            sleep 2
+          done
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-benchmarks-${{ matrix.service }}-${{ matrix.test }}
+          path: results/
+          retention-days: 90
+
+  generate-benchmark-report:
+    name: Generate Benchmark Report
+    runs-on: ubuntu-latest
+    needs: [prepare-release, run-release-benchmarks]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download all benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-benchmarks-*
+          merge-multiple: true
+          path: results/
+
+      - name: Generate comprehensive report
+        run: |
+          # Create enhanced summarization script
+          cat > generate_release_report.mjs << 'EOF'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const results = [];
+          const rawDir = 'results/raw';
+
+          if (fs.existsSync(rawDir)) {
+            const files = fs.readdirSync(rawDir).filter(f => f.endsWith('_summary.json'));
+            
+            for (const file of files) {
+              try {
+                const data = JSON.parse(fs.readFileSync(path.join(rawDir, file), 'utf8'));
+                const [service, test, config, rep, scenario] = file.replace('_summary.json', '').split('_');
+                
+                results.push({
+                  service,
+                  test,
+                  scenario,
+                  throughput: data.metrics?.iterations?.values?.rate || 0,
+                  latency_p50: data.metrics?.http_req_duration?.values?.['p(50)'] || 0,
+                  latency_p95: data.metrics?.http_req_duration?.values?.['p(95)'] || 0,
+                  latency_p99: data.metrics?.http_req_duration?.values?.['p(99)'] || 0,
+                  error_rate: data.metrics?.http_req_failed?.values?.rate || 0,
+                  total_requests: data.metrics?.http_reqs?.values?.count || 0
+                });
+              } catch (error) {
+                console.error(`Error processing ${file}:`, error.message);
+              }
+            }
+          }
+
+          // Generate markdown report
+          let report = `# REST API Benchmarks Release Report
+
+          **Version**: ${{ needs.prepare-release.outputs.version }}
+          **Date**: ${new Date().toISOString().split('T')[0]}
+          **Configuration**: 2vCPU, 4GB RAM
+
+          ## Executive Summary
+
+          This report contains performance benchmarks for ${new Set(results.map(r => r.service)).size} programming languages across ${new Set(results.map(r => r.test)).size} different test scenarios.
+
+          ## Performance Overview
+
+          `;
+
+          // Group by test type
+          const testTypes = [...new Set(results.map(r => r.test))];
+          
+          for (const test of testTypes) {
+            report += `\n### ${test.charAt(0).toUpperCase() + test.slice(1)} Test\n\n`;
+            
+            const testResults = results.filter(r => r.test === test && r.scenario === 'c100');
+            testResults.sort((a, b) => b.throughput - a.throughput);
+            
+            report += `| Language | Throughput (req/s) | Latency p95 (ms) | Error Rate (%) |\n`;
+            report += `|----------|-------------------|-------------------|----------------|\n`;
+            
+            for (const result of testResults.slice(0, 10)) {
+              report += `| ${result.service} | ${Math.round(result.throughput)} | ${result.latency_p95.toFixed(2)} | ${(result.error_rate * 100).toFixed(2)} |\n`;
+            }
+          }
+
+          // Detailed results by scenario
+          report += `\n## Detailed Results by Load\n\n`;
+          
+          const scenarios = [...new Set(results.map(r => r.scenario))];
+          
+          for (const scenario of scenarios.sort()) {
+            report += `\n### Scenario: ${scenario}\n\n`;
+            
+            const scenarioResults = results.filter(r => r.scenario === scenario);
+            scenarioResults.sort((a, b) => b.throughput - a.throughput);
+            
+            report += `| Language | Test | Throughput | p50 | p95 | p99 | Errors |\n`;
+            report += `|----------|------|------------|-----|-----|-----|--------|\n`;
+            
+            for (const result of scenarioResults) {
+              report += `| ${result.service} | ${result.test} | ${Math.round(result.throughput)} | ${result.latency_p50.toFixed(1)} | ${result.latency_p95.toFixed(1)} | ${result.latency_p99.toFixed(1)} | ${(result.error_rate * 100).toFixed(2)}% |\n`;
+            }
+          }
+
+          report += `\n## Methodology
+
+          - **Load Testing Tool**: K6
+          - **Test Duration**: 60 seconds per scenario
+          - **Resource Limits**: 2 vCPU, 4GB RAM
+          - **Container Platform**: Docker
+          - **Operating System**: Ubuntu 24.04
+
+          ## Notes
+
+          - All services use their respective production-ready HTTP frameworks
+          - Tests are run in isolated Docker containers with resource limits
+          - Results may vary based on hardware and system load
+          - Error rates above 1% indicate potential service instability
+
+          `;
+
+          fs.writeFileSync('BENCHMARK_REPORT.md', report);
+          
+          // Also save raw data as JSON
+          fs.writeFileSync('benchmark_results.json', JSON.stringify(results, null, 2));
+          
+          console.log(`Generated report with ${results.length} benchmark results`);
+          EOF
+
+          node generate_release_report.mjs
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            BENCHMARK_REPORT.md
+            benchmark_results.json
+          retention-days: 365
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-and-push-images, generate-benchmark-report]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - name: Download benchmark report
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-report
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version }}
+          name: REST API Benchmarks ${{ needs.prepare-release.outputs.version }}
+          body_path: release_notes.md
+          prerelease: ${{ needs.prepare-release.outputs.is-prerelease == 'true' }}
+          files: |
+            BENCHMARK_REPORT.md
+            benchmark_results.json
+          generate_release_notes: false
+
+  update-documentation:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    if: needs.prepare-release.outputs.is-prerelease == 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README with latest version
+        run: |
+          # Update version references in README
+          sed -i 's/\(ghcr\.io\/.*\/bench-.*:\)[^`]*/\1${{ needs.prepare-release.outputs.version }}/g' README.md
+          
+          # Update changelog if it exists
+          if [ -f CHANGELOG.md ]; then
+            # Add new entry to changelog
+            sed -i '1a\\n## [${{ needs.prepare-release.outputs.version }}] - $(date +%Y-%m-%d)\n' CHANGELOG.md
+          fi
+
+      - name: Commit documentation updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md CHANGELOG.md || true
+          git diff --staged --quiet || git commit -m "docs: update documentation for release ${{ needs.prepare-release.outputs.version }}"
+          git push
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-release]
+    if: always()
+    steps:
+      - name: Release Success Notification
+        if: needs.create-release.result == 'success'
+        run: |
+          echo "🚀 Successfully released REST API Benchmarks ${{ needs.prepare-release.outputs.version }}"
+          echo "📊 Benchmark results are included in the release"
+          echo "🐳 Container images are available at ghcr.io/${{ github.repository }}/bench-*:${{ needs.prepare-release.outputs.version }}"
+
+      - name: Release Failure Notification
+        if: needs.create-release.result == 'failure'
+        run: |
+          echo "❌ Failed to create release ${{ needs.prepare-release.outputs.version }}"
+          echo "Check the workflow logs for details"
+          exit 1

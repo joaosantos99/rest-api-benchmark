@@ -1,0 +1,405 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 2 AM UTC to catch dependency issues
+    - cron: '0 2 * * *'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+      k6: ${{ steps.changes.outputs.k6 }}
+      orchestration: ${{ steps.changes.outputs.orchestration }}
+      workflows: ${{ steps.changes.outputs.workflows }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "services=true" >> $GITHUB_OUTPUT
+            echo "k6=true" >> $GITHUB_OUTPUT
+            echo "orchestration=true" >> $GITHUB_OUTPUT
+            echo "workflows=true" >> $GITHUB_OUTPUT
+          else
+            # Detect changes in different parts of the project
+            if git diff --name-only ${{ github.event.before }}..${{ github.sha }} | grep -q "^services/"; then
+              echo "services=true" >> $GITHUB_OUTPUT
+            fi
+            if git diff --name-only ${{ github.event.before }}..${{ github.sha }} | grep -q "^k6/"; then
+              echo "k6=true" >> $GITHUB_OUTPUT
+            fi
+            if git diff --name-only ${{ github.event.before }}..${{ github.sha }} | grep -q "^orchestration/"; then
+              echo "orchestration=true" >> $GITHUB_OUTPUT
+            fi
+            if git diff --name-only ${{ github.event.before }}..${{ github.sha }} | grep -q "^.github/workflows/"; then
+              echo "workflows=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  lint-and-format:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services == 'true' || needs.detect-changes.outputs.workflows == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'k6/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd k6
+          npm ci
+
+      - name: Lint workflows
+        run: |
+          # Check workflow syntax
+          for workflow in .github/workflows/*.yml; do
+            echo "Checking $workflow"
+            # Use actionlint if available, otherwise basic YAML validation
+            if command -v actionlint >/dev/null 2>&1; then
+              actionlint "$workflow"
+            else
+              python -c "import yaml; yaml.safe_load(open('$workflow'))"
+            fi
+          done
+
+      - name: Check shell scripts
+        run: |
+          # Find and check all shell scripts
+          find . -name "*.sh" -type f | while read -r script; do
+            echo "Checking $script"
+            if command -v shellcheck >/dev/null 2>&1; then
+              shellcheck "$script"
+            else
+              bash -n "$script"
+            fi
+          done
+
+  build-services:
+    name: Build Services
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - node
+          - bun
+          - deno
+          - golang
+          - rust
+          - python
+          - cpp
+          - csharp
+          - java17
+          - java21
+          - scala
+          - php
+          - perl
+          - elixir
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/bench-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+  test-services:
+    name: Test Services
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-services]
+    if: needs.detect-changes.outputs.services == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - node
+          - bun
+          - deno
+          - golang
+          - rust
+          - python
+          - cpp
+          - csharp
+          - java17
+          - java21
+          - scala
+          - php
+          - perl
+          - elixir
+        test:
+          - hello
+          - n-body
+          - pi-digits
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install K6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Build service
+        run: |
+          docker build -t bench/${{ matrix.service }} ./services/${{ matrix.service }}
+
+      - name: Test service endpoints
+        run: |
+          # Start service
+          docker run -d --name test-service \
+            -e PORT=8080 \
+            -e TEST_MODE=${{ matrix.test }} \
+            -p 18080:8080 \
+            bench/${{ matrix.service }}
+
+          # Wait for service to start
+          timeout 30 bash -c 'until curl -f http://localhost:18080/api/hello-world 2>/dev/null; do sleep 1; done'
+
+          # Test endpoint based on test type
+          case "${{ matrix.test }}" in
+            "hello")
+              endpoint="/api/hello-world"
+              ;;
+            "n-body")
+              endpoint="/api/n-body"
+              ;;
+            "pi-digits")
+              endpoint="/api/pi-digits"
+              ;;
+          esac
+
+          # Run quick K6 test
+          TARGET_URL="http://127.0.0.1:18080${endpoint}" \
+          VUS=1 \
+          DURATION=10s \
+            k6 run k6/http-bench.js
+
+          # Check service logs
+          docker logs test-service
+
+          # Clean up
+          docker stop test-service
+          docker rm test-service
+
+  benchmark-sample:
+    name: Sample Benchmark
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-services]
+    if: needs.detect-changes.outputs.services == 'true' || needs.detect-changes.outputs.k6 == 'true'
+    strategy:
+      matrix:
+        service: [node, rust, golang]
+        test: [hello, n-body]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install K6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: System tuning
+        run: |
+          sudo bash utils/sysctl.sh || true
+
+      - name: Run mini benchmark
+        run: |
+          export IMAGE="bench/${{ matrix.service }}"
+          export SERVICE="${{ matrix.service }}"
+          export TEST_MODE="${{ matrix.test }}"
+          export CPUS="1"
+          export MEM="2g"
+          export CPUSET="0"
+          export HOST_PORT=18080
+
+          # Build service
+          docker compose build sut
+
+          # Run limited benchmark (just c1 and c10 scenarios)
+          echo '{"name":"c1","vus":1,"dur":"30s"},{"name":"c10","vus":10,"dur":"30s"}' | \
+          jq -c '.[]' | while read -r scenario; do
+            NAME=$(echo "$scenario" | jq -r '.name')
+            VUS=$(echo "$scenario" | jq -r '.vus')
+            DUR=$(echo "$scenario" | jq -r '.dur')
+
+            echo "==> Testing ${{ matrix.service }} ${{ matrix.test }} scenario:${NAME}"
+            
+            docker compose up -d sut
+            sleep 3
+
+            case "${{ matrix.test }}" in
+              "hello") URL_PATH="/api/hello-world" ;;
+              "n-body") URL_PATH="/api/n-body" ;;
+              "pi-digits") URL_PATH="/api/pi-digits" ;;
+            esac
+
+            TARGET_URL="http://127.0.0.1:${HOST_PORT}${URL_PATH}" \
+            VUS=${VUS} \
+            DURATION=${DUR} \
+              k6 run k6/http-bench.js
+
+            docker compose down -v
+          done
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ matrix.service }}-${{ matrix.test }}
+          path: results/
+          retention-days: 7
+
+  validate-orchestration:
+    name: Validate Orchestration
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.orchestration == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate orchestration scripts
+        run: |
+          # Check that scenarios.json is valid
+          jq . k6/scenarios.json > /dev/null
+
+          # Validate run-suite.sh syntax
+          bash -n orchestration/run-suite.sh
+
+          # Check that all referenced services exist
+          LANGS=(node bun deno golang rust python cpp csharp java17 java21 elixir perl scala php)
+          for lang in "${LANGS[@]}"; do
+            if [ ! -d "services/$lang" ]; then
+              echo "ERROR: Service directory services/$lang does not exist"
+              exit 1
+            fi
+            if [ ! -f "services/$lang/Dockerfile" ]; then
+              echo "ERROR: Dockerfile missing for $lang"
+              exit 1
+            fi
+          done
+
+      - name: Validate Docker Compose
+        run: |
+          # Check compose.yml syntax
+          docker compose config > /dev/null
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services == 'true'
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  report-status:
+    name: Report Status
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, build-services, test-services, benchmark-sample, validate-orchestration]
+    if: always()
+    steps:
+      - name: Report Success
+        if: needs.lint-and-format.result == 'success' && needs.build-services.result == 'success' && needs.test-services.result == 'success'
+        run: |
+          echo "✅ All CI checks passed successfully!"
+          echo "- Linting and formatting: ${{ needs.lint-and-format.result }}"
+          echo "- Service builds: ${{ needs.build-services.result }}"
+          echo "- Service tests: ${{ needs.test-services.result }}"
+          echo "- Sample benchmarks: ${{ needs.benchmark-sample.result }}"
+          echo "- Orchestration validation: ${{ needs.validate-orchestration.result }}"
+
+      - name: Report Failure
+        if: needs.lint-and-format.result == 'failure' || needs.build-services.result == 'failure' || needs.test-services.result == 'failure'
+        run: |
+          echo "❌ CI checks failed!"
+          echo "- Linting and formatting: ${{ needs.lint-and-format.result }}"
+          echo "- Service builds: ${{ needs.build-services.result }}"
+          echo "- Service tests: ${{ needs.test-services.result }}"
+          echo "- Sample benchmarks: ${{ needs.benchmark-sample.result }}"
+          echo "- Orchestration validation: ${{ needs.validate-orchestration.result }}"
+          exit 1
