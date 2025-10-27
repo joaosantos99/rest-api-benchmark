@@ -1,0 +1,185 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--allow-multiple-documents']
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Markdown
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.41.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+        exclude: 'CHANGELOG.md'
+
+  # YAML formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types: [yaml]
+
+  # Docker
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+  # Shell scripts
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ['-e', 'SC1091']
+
+  # JavaScript/TypeScript (for K6 and Node.js)
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.9.1
+    hooks:
+      - id: eslint
+        files: \.(js|mjs|ts|jsx|tsx)$
+        types: [file]
+        additional_dependencies:
+          - eslint@^8.0.0
+          - '@eslint/js@^9.0.0'
+
+  # Python (for utility scripts)
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+
+  # Go formatting
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+      - id: go-mod-tidy
+
+  # Rust formatting
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+        files: services/rust/.*\.rs$
+      - id: clippy
+        files: services/rust/.*\.rs$
+
+  # Java formatting
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.14.0
+    hooks:
+      - id: pretty-format-java
+        args: [--autofix]
+        files: services/java.*\.java$
+
+  # C/C++ formatting
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        files: services/cpp/.*\.(c|cpp|h|hpp)$
+
+  # PHP formatting
+  - repo: https://github.com/hootsuite/pre-commit-php
+    rev: v3.1.0
+    hooks:
+      - id: php-lint
+        files: services/php/.*\.php$
+      - id: php-cs-fixer
+        files: services/php/.*\.php$
+
+  # Security checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+
+  # Git hooks
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.29.0
+    hooks:
+      - id: commitizen
+      - id: commitizen-branch
+        stages: [push]
+
+  # License headers
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      - id: insert-license
+        files: \.(js|mjs|ts|py|go|rs|java|cpp|hpp|c|h|cs|php|pl|ex|exs)$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER.txt
+          - --comment-style
+          - /*| *| */
+
+# Configuration for specific hooks
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false
+
+# Language-specific configurations
+default_language_version:
+  python: python3.11
+  node: '20.0.0'
+
+# Exclude patterns
+exclude: |
+  (?x)^(
+    # Generated files
+    .*\.lock|
+    .*\.min\.(js|css)|
+    # Dependencies
+    node_modules/|
+    target/|
+    vendor/|
+    # Results
+    results/|
+    # Temporary files
+    \.tmp/|
+    temp/
+  )$
+  
