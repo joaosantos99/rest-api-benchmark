@@ -1,6 +1,7 @@
 import helloWorld from "./tests/hello-world.ts";
 import piDigits from "./tests/pi-digits.ts";
 import nbody from "./tests/n-body.ts";
+import jsonSerde from "./tests/json-serde.ts";
 
 const port = Number(Deno.env.get("PORT") || 8080);
 
@@ -14,6 +15,8 @@ Deno.serve({ port: port }, (req) => {
       return piDigits();
     case "/api/n-body":
       return nbody();
+    case "/api/json-serde":
+      return jsonSerde();
     default:
       return new Response("Not found", { status: 404 });
   }
