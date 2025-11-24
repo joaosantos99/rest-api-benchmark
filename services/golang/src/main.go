@@ -10,6 +10,7 @@ func main() {
 	http.HandleFunc("/api/pi-digits", tests.PiDigits)
 	http.HandleFunc("/api/n-body", tests.NBodyHandler)
 	http.HandleFunc("/api/json-serde", tests.JsonSerde)
+	http.HandleFunc("/api/regex-redux", tests.RegexRedux)
 
 	http.ListenAndServe(":8080", nil)
 }
