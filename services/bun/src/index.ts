@@ -1,6 +1,8 @@
 import helloWorld from "./tests/hello-world";
 import piDigits from "./tests/pi-digits";
 import nbody from "./tests/n-body";
+import jsonSerde from "./tests/json-serde";
+import regexRedux from "./tests/regex-redux";
 
 const port = process.env.PORT || 8080;
 
@@ -10,6 +12,7 @@ Bun.serve({
     '/api/hello-world': () => helloWorld(),
     '/api/pi-digits': () => piDigits(),
     '/api/n-body': () => nbody(),
+    '/api/json-serde': () => jsonSerde(),
   },
 });
 
