@@ -2,6 +2,7 @@ import helloWorld from "./tests/hello-world.ts";
 import piDigits from "./tests/pi-digits.ts";
 import nbody from "./tests/n-body.ts";
 import jsonSerde from "./tests/json-serde.ts";
+import regexRedux from "./tests/regex-redux.ts";
 
 const port = Number(Deno.env.get("PORT") || 8080);
 
@@ -17,6 +18,8 @@ Deno.serve({ port: port }, (req) => {
       return nbody();
     case "/api/json-serde":
       return jsonSerde();
+    case "/api/regex-redux":
+      return regexRedux();
     default:
       return new Response("Not found", { status: 404 });
   }
