@@ -13,6 +13,7 @@ Bun.serve({
     '/api/pi-digits': () => piDigits(),
     '/api/n-body': () => nbody(),
     '/api/json-serde': () => jsonSerde(),
+    '/api/regex-redux': () => regexRedux(),
   },
 });
 
