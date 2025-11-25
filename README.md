@@ -96,7 +96,7 @@ docker compose down -v
 | Bun | v1.2.22 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Deno | v2.5.2 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Go | v1.25.1 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Rust | v1.90.0 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Rust | v1.90.0 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
 | C++ | v23 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | C# | v13 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Java 17 | v17 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
