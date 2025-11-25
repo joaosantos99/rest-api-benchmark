@@ -18,6 +18,7 @@ async fn main() {
         .route("/api/pi-digits", get(tests::pi_digits::handler))
         .route("/api/n-body", get(tests::n_body::handler))
         .route("/api/json-serde", get(tests::json_serde::handler))
+        .route("/api/regex-redux", get(tests::regex_redux::handler));
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
