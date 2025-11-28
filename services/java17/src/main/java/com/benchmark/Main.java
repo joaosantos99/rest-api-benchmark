@@ -1,6 +1,7 @@
 package com.benchmark;
 
 import com.benchmark.tests.HelloWorld;
+import com.benchmark.tests.JsonSerde;
 import com.benchmark.tests.NBody;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpHandler;
@@ -20,6 +21,7 @@ public class Main {
         HttpServer server = HttpServer.create(new InetSocketAddress(Integer.parseInt(port)), 0);
 
         server.createContext("/api/hello-world", new HelloWorld());
+        server.createContext("/api/json-serde", new JsonSerde());
         server.createContext("/api/n-body", new NBody());
 
         server.setExecutor(null);
