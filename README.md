@@ -100,7 +100,7 @@ docker compose down -v
 | C++ | v23 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | C# | v13 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Java 17 | v17 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
-| Java 21 | v21 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| Java 21 | v21 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
 | Scala | v3.7.3 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | Python | v3.13.7 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
 | PHP | v8.4.13 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
