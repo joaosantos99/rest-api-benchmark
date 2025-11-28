@@ -3,6 +3,7 @@ package com.benchmark;
 import com.benchmark.tests.HelloWorld;
 import com.benchmark.tests.JsonSerde;
 import com.benchmark.tests.NBody;
+import com.benchmark.tests.RegexRedux;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
@@ -23,6 +24,7 @@ public class Main {
         server.createContext("/api/hello-world", new HelloWorld());
         server.createContext("/api/json-serde", new JsonSerde());
         server.createContext("/api/n-body", new NBody());
+        server.createContext("/api/regex-redux", new RegexRedux());
 
         server.setExecutor(null);
         server.start();
