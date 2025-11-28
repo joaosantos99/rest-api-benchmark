@@ -23,6 +23,11 @@ defmodule ElixirBenchmark.Router do
     send_resp(conn, 200, response)
   end
 
+  get "/api/regex-redux" do
+    response = ElixirBenchmark.Tests.RegexRedux.handler()
+    send_resp(conn, 200, response)
+  end
+
   match _ do
     send_resp(conn, 404, "Not Found")
   end
