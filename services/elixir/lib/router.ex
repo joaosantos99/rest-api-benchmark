@@ -18,6 +18,11 @@ defmodule ElixirBenchmark.Router do
     send_resp(conn, 200, response)
   end
 
+  get "/api/json-serde" do
+    response = ElixirBenchmark.Tests.JsonSerde.handler()
+    send_resp(conn, 200, response)
+  end
+
   match _ do
     send_resp(conn, 404, "Not Found")
   end
