@@ -7,6 +7,7 @@ import akka.http.scaladsl.server.Route
 import akka.stream.scaladsl.Source
 import akka.util.ByteString
 import tests.NBody
+import tests.JsonSerde
 
 import scala.concurrent.ExecutionContextExecutor
 import scala.io.StdIn
@@ -27,6 +28,11 @@ object Main {
       path("api" / "n-body") {
         get {
           complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, NBody.nBody()))
+        }
+      } ~
+      path("api" / "json-serde") {
+        get {
+          complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, JsonSerde.jsonSerde()))
         }
       } ~
       path("health") {
