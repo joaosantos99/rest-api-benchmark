@@ -4,6 +4,7 @@
 #include <crow.h>
 #include "tests/hello_world.h"
 #include "tests/n_body.h"
+#include "tests/json_serde.h"
 
 int main() {
     crow::SimpleApp app;
@@ -22,6 +23,12 @@ int main() {
         .methods("GET"_method)
         ([](){
             return n_body();
+        });
+
+    CROW_ROUTE(app, "/api/json-serde")
+        .methods("GET"_method)
+        ([](){
+            return json_serde();
         });
 
     std::cout << "Server running at http://localhost:" << port << " (C++)" << std::endl;

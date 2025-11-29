@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libboost-all-dev \
     git \
     libasio-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Crow from source
@@ -19,6 +20,10 @@ RUN git clone https://github.com/CrowCpp/Crow.git && \
     mkdir build && cd build && \
     cmake .. -DCROW_BUILD_EXAMPLES=OFF -DCROW_BUILD_TESTS=OFF && \
     make install
+
+# Download nlohmann/json header
+RUN mkdir -p /usr/local/include/nlohmann && \
+    curl -L https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp -o /usr/local/include/nlohmann/json.hpp
 
 WORKDIR /app
 
