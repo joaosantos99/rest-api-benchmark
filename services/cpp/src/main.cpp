@@ -5,6 +5,7 @@
 #include "tests/hello_world.h"
 #include "tests/n_body.h"
 #include "tests/json_serde.h"
+#include "tests/regex_redux.h"
 
 int main() {
     crow::SimpleApp app;
@@ -29,6 +30,12 @@ int main() {
         .methods("GET"_method)
         ([](){
             return json_serde();
+        });
+
+    CROW_ROUTE(app, "/api/regex-redux")
+        .methods("GET"_method)
+        ([](){
+            return regex_redux();
         });
 
     std::cout << "Server running at http://localhost:" << port << " (C++)" << std::endl;

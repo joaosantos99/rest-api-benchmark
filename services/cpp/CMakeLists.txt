@@ -17,6 +17,7 @@ set(SOURCES
     src/tests/hello_world.cpp
     src/tests/n_body.cpp
     src/tests/json_serde.cpp
+    src/tests/regex_redux.cpp
 )
 
 # Create executable
