@@ -2,7 +2,7 @@
 set -euo pipefail
 
 LANGS=(node bun deno golang rust python cpp csharp java17 java21 elixir perl scala php)
-TESTS=(hello n-body pi-digits)
+TESTS=(hello n-body pi-digits json-serde)
 SIZES=("1 2g 0" "2 4g 0-1" "4 8g 0-3") # CPUS MEM CPUSET
 REPS=1
 BREAK=1

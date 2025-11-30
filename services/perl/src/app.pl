@@ -10,6 +10,7 @@ use HTTP::Server::PSGI;
 # Load modules directly
 require './tests/hello_world.pm';
 require './tests/n_body.pm';
+require './tests/json_serde.pm';
 
 my $app = sub {
     my $env = shift;
@@ -28,6 +29,10 @@ my $app = sub {
     }
     elsif ($path eq '/api/n-body') {
         my $response = Tests::NBody::n_body();
+        $res->body($response);
+    }
+    elsif ($path eq '/api/json-serde') {
+        my $response = Tests::JsonSerde::json_serde();
         $res->body($response);
     }
     else {
