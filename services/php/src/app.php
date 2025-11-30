@@ -2,6 +2,7 @@
 
 require_once 'tests/hello_world.php';
 require_once 'tests/n_body.php';
+require_once 'tests/json-serde.php';
 
 // Set CORS headers
 header('Access-Control-Allow-Origin: *');
@@ -27,6 +28,12 @@ switch ($path) {
         break;
     case '/api/n-body':
         $response = n_body();
+        http_response_code(200);
+        header('Content-Type: text/plain');
+        echo $response;
+        break;
+    case '/api/json-serde':
+        $response = json_serde();
         http_response_code(200);
         header('Content-Type: text/plain');
         echo $response;
