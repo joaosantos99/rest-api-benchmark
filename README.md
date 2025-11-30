@@ -98,7 +98,7 @@ docker compose down -v
 | Go | v1.25.1 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Rust | v1.90.0 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | C++ | v23 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| C# | v13 | ✅ | ✅ | ✅ | ❌ | ❌ | Partial |
+| C# | v13 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
 | Java 17 | v17 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Java 21 | v21 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Scala | v3.7.3 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
