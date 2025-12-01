@@ -11,6 +11,7 @@ use HTTP::Server::PSGI;
 require './tests/hello_world.pm';
 require './tests/n_body.pm';
 require './tests/json_serde.pm';
+require './tests/regex_redux.pm';
 
 my $app = sub {
     my $env = shift;
@@ -33,6 +34,10 @@ my $app = sub {
     }
     elsif ($path eq '/api/json-serde') {
         my $response = Tests::JsonSerde::json_serde();
+        $res->body($response);
+    }
+    elsif ($path eq '/api/regex-redux') {
+        my $response = Tests::RegexRedux::regex_redux();
         $res->body($response);
     }
     else {
