@@ -8,6 +8,7 @@ from tests.hello_world import hello_world
 from tests.pi_digits import pi_digits
 from tests.n_body import n_body
 from tests.json_serde import json_serde
+from tests.regex_redux import regex_redux
 
 class BenchmarkHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -32,6 +33,9 @@ class BenchmarkHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
         elif path == '/api/json-serde':
             response = json_serde()
+            self.wfile.write(response.encode('utf-8'))
+        elif path == '/api/regex-redux':
+            response = regex_redux()
             self.wfile.write(response.encode('utf-8'))
         else:
             self.send_response(404)
