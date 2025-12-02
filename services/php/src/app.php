@@ -3,6 +3,7 @@
 require_once 'tests/hello_world.php';
 require_once 'tests/n_body.php';
 require_once 'tests/json-serde.php';
+require_once 'tests/regex-redux.php';
 
 // Set CORS headers
 header('Access-Control-Allow-Origin: *');
@@ -34,6 +35,12 @@ switch ($path) {
         break;
     case '/api/json-serde':
         $response = json_serde();
+        http_response_code(200);
+        header('Content-Type: text/plain');
+        echo $response;
+        break;
+    case '/api/regex-redux':
+        $response = regex_redux();
         http_response_code(200);
         header('Content-Type: text/plain');
         echo $response;

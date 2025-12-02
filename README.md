@@ -103,7 +103,7 @@ docker compose down -v
 | Java 21 | v21 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Scala | v3.7.3 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Python | v3.13.7 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| PHP | v8.4.13 | ✅ | ✅ | ✅ | ✅ | ❌ | Partial |
+| PHP | v8.4.13 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Perl | v5.42.0 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Elixir | v1.18 | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 
