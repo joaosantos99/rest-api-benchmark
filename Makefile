@@ -1,4 +1,4 @@
-.PHONY: tune build run summarize clean
+.PHONY: build run summarize clean upload-mongo
 
 tune:
 	bash utils/sysctl.sh
@@ -11,6 +11,9 @@ run:
 
 summarize:
 	node utils/summarize.mjs
+
+upload-mongo:
+	node utils/upload-mongo.mjs
 
 clean:
 	docker compose down -v || true

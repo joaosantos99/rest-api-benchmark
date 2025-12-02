@@ -206,3 +206,53 @@ Modify `orchestration/run-suite.sh` to change:
 ## 📊 Results
 
 Results are stored in `results/raw/` as JSON files containing detailed metrics. Use `make summarize` to generate human-readable reports.
+
+### Uploading Results to MongoDB Atlas
+
+To upload benchmark results to MongoDB Atlas:
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Set up MongoDB Atlas connection:**
+   - Create a MongoDB Atlas account at https://www.mongodb.com/cloud/atlas
+   - Create a cluster and get your connection string
+   - Set environment variables:
+     ```bash
+     export MONGODB_URI="mongodb+srv://username:password@cluster.mongodb.net/"
+     export MONGODB_DB_NAME="benchmark"  # Optional, defaults to 'benchmark'
+     export MONGODB_COLLECTION="results"  # Optional, defaults to 'results'
+     ```
+
+   Or create a `.env` file:
+   ```bash
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+   MONGODB_DB_NAME=benchmark
+   MONGODB_COLLECTION=results
+   ```
+
+3. **Upload results:**
+   ```bash
+   make upload-mongo
+   # or: node utils/upload-mongo.mjs
+   ```
+
+The script will:
+- Parse all result files from `results/raw/`
+- Extract metadata (language, test type, CPU count, scenario, etc.)
+- Structure the data with metrics (throughput, latency, error rates)
+- Upload to MongoDB Atlas
+- Create indexes for efficient querying
+
+**Document Structure:**
+- `filename`: Original filename
+- `language`: Programming language (node, bun, rust, etc.)
+- `test`: Test type (hello, json-serde, pi-digits, etc.)
+- `cpus`: Number of vCPUs
+- `repetition`: Repetition number
+- `scenario`: Load test scenario (warmup, light-load, etc.)
+- `timestamp`: Upload timestamp
+- `metrics`: Structured performance metrics
+- `rawData`: Complete original k6 result data

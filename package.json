@@ -1,0 +1,12 @@
+{
+  "name": "rest-api-benchmark",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "REST API benchmark suite",
+  "scripts": {
+    "upload-mongo": "node utils/upload-mongo.mjs"
+  },
+  "dependencies": {
+    "mongodb": "^6.3.0"
+  }
+}
