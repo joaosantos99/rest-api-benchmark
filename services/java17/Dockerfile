@@ -1,5 +1,5 @@
 # services/java17/Dockerfile
-FROM eclipse-temurin:17-jdk AS builder
+FROM eclipse-temurin:17-jre-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY . .
 RUN mvn clean package -DskipTests
 
 # Final minimal image
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 

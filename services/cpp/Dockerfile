@@ -30,9 +30,11 @@ WORKDIR /app
 # Copy source
 COPY . .
 
+# Set C++ flags for optimal performance
+ENV CXXFLAGS="-O3 -march=native"
 # Build the application
 RUN mkdir build && cd build && \
-    cmake .. && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make
 
 # Final minimal image

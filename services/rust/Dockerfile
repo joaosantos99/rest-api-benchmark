@@ -6,6 +6,9 @@ WORKDIR /app
 # Copy source
 COPY . .
 
+# Set Rust flags for optimal performance
+ENV RUSTFLAGS="-C target-cpu=native -C opt-level=3"
+
 # Build the application
 RUN cargo build --release
 
