@@ -13,8 +13,7 @@ x-common: &common
   environment:
     PORT: "8080"
     TEST_MODE: "${TEST_MODE}"
-  ports:
-    - "${HOST_PORT:-8080}:8080"
+  network_mode: "host"
   tmpfs:
     - /tmp:rw,noexec,nosuid,nodev,size=2g
   <<: *size

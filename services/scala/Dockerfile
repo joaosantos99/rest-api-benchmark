@@ -1,5 +1,5 @@
 # services/scala/Dockerfile
-FROM eclipse-temurin:17-jdk AS builder
+FROM eclipse-temurin:17-jre-alpine AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ COPY src/ src/
 RUN sbt assembly
 
 # Final minimal image
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 

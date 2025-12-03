@@ -6,7 +6,10 @@ WORKDIR /app
 # Copy source and build
 COPY src/ .
 RUN go mod init bench || true
-RUN go build -o server .
+# Set Go flags for optimal performance
+ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOARM=7 GO111MODULE=on
+# Build the application
+RUN go build -a -ldflags '-extldflags "-static"' -o server
 
 # Final minimal image
 FROM ubuntu:24.04
