@@ -1,0 +1,135 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Markdown files
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = 80
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_size = 2
+
+# JavaScript/TypeScript files
+[*.{js,mjs,ts,jsx,tsx}]
+indent_size = 2
+max_line_length = 100
+
+# Python files
+[*.py]
+indent_size = 4
+max_line_length = 88
+
+# Go files
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Rust files
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+# Java files
+[*.java]
+indent_size = 4
+max_line_length = 120
+
+# Scala files
+[*.scala]
+indent_size = 2
+max_line_length = 120
+
+# C/C++ files
+[*.{c,cpp,h,hpp}]
+indent_size = 4
+max_line_length = 100
+
+# C# files
+[*.cs]
+indent_size = 4
+max_line_length = 120
+
+# PHP files
+[*.php]
+indent_size = 4
+max_line_length = 120
+
+# Perl files
+[*.{pl,pm}]
+indent_size = 4
+max_line_length = 100
+
+# Elixir files
+[*.{ex,exs}]
+indent_size = 2
+max_line_length = 98
+
+# Shell scripts
+[*.sh]
+indent_size = 2
+max_line_length = 100
+
+# Dockerfile
+[Dockerfile*]
+indent_size = 2
+
+# Makefile
+[{Makefile,*.mk}]
+indent_style = tab
+indent_size = 4
+
+# Configuration files
+[*.{toml,ini}]
+indent_size = 2
+
+# XML files
+[*.xml]
+indent_size = 2
+
+# HTML files
+[*.html]
+indent_size = 2
+
+# CSS files
+[*.css]
+indent_size = 2
+
+# SQL files
+[*.sql]
+indent_size = 2
+max_line_length = 120
+
+# Package files
+[package.json]
+indent_size = 2
+
+# Lock files - don't format
+[*.lock]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Generated files - don't format
+[*.min.*]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Binary files - don't format
+[*.{png,jpg,jpeg,gif,ico,pdf,zip,tar,gz,7z,rar,jar,war,ear,class,so,dll,exe,dylib,wasm}]
+insert_final_newline = false
+trim_trailing_whitespace = false

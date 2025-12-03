@@ -1,0 +1,166 @@
+# .gitattributes for REST API Benchmarks
+
+# Set default behavior for all files
+* text=auto
+
+# Explicitly set text files
+*.md text
+*.txt text
+*.json text
+*.js text
+*.mjs text
+*.ts text
+*.py text
+*.go text
+*.rs text
+*.java text
+*.scala text
+*.cpp text
+*.hpp text
+*.c text
+*.h text
+*.cs text
+*.php text
+*.pl text
+*.ex text
+*.exs text
+*.sh text
+*.yml text
+*.yaml text
+*.toml text
+*.xml text
+*.html text
+*.css text
+*.sql text
+*.dockerfile text
+Dockerfile* text
+Makefile text
+LICENSE text
+CONTRIBUTING text
+CHANGELOG text
+*.gitignore text
+*.gitattributes text
+
+# Set line ending preferences
+*.sh text eol=lf
+*.py text eol=lf
+Makefile text eol=lf
+*.dockerfile text eol=lf
+Dockerfile* text eol=lf
+
+# Explicitly set binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.rar binary
+*.jar binary
+*.war binary
+*.ear binary
+*.class binary
+*.so binary
+*.dll binary
+*.exe binary
+*.dylib binary
+*.wasm binary
+
+# Language-specific settings
+*.rs linguist-language=Rust
+*.go linguist-language=Go
+*.java linguist-language=Java
+*.scala linguist-language=Scala
+*.py linguist-language=Python
+*.js linguist-language=JavaScript
+*.mjs linguist-language=JavaScript
+*.ts linguist-language=TypeScript
+*.cpp linguist-language=C++
+*.hpp linguist-language=C++
+*.c linguist-language=C
+*.h linguist-language=C
+*.cs linguist-language=C#
+*.php linguist-language=PHP
+*.pl linguist-language=Perl
+*.ex linguist-language=Elixir
+*.exs linguist-language=Elixir
+
+# Documentation files
+*.md linguist-documentation
+docs/** linguist-documentation
+
+# Configuration files
+*.yml linguist-language=YAML
+*.yaml linguist-language=YAML
+*.json linguist-language=JSON
+*.toml linguist-language=TOML
+*.xml linguist-language=XML
+Dockerfile* linguist-language=Dockerfile
+*.dockerfile linguist-language=Dockerfile
+
+# Generated files
+results/** linguist-generated=true
+target/** linguist-generated=true
+node_modules/** linguist-vendored=true
+vendor/** linguist-vendored=true
+deps/** linguist-vendored=true
+
+# Benchmark results and reports
+*.json filter=lfs diff=lfs merge=lfs -text
+results/raw/*.json filter=lfs diff=lfs merge=lfs -text
+results/summary/*.json filter=lfs diff=lfs merge=lfs -text
+
+# Archive files
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
+
+# Keep certain JSON files as text (configuration)
+package.json -filter
+package-lock.json -filter
+composer.json -filter
+tsconfig.json -filter
+deno.json -filter
+Cargo.toml -filter
+pom.xml -filter
+build.sbt -filter
+mix.exs -filter
+
+# Line ending handling for cross-platform development
+# Ensure shell scripts always use LF
+*.sh text eol=lf
+orchestration/*.sh text eol=lf
+utils/*.sh text eol=lf
+
+# Ensure Windows batch files use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Diff settings for better code review
+*.json diff=json
+*.yml diff=yaml
+*.yaml diff=yaml
+*.md diff=markdown
+
+# Merge settings
+*.json merge=union
+*.md merge=union
+
+# Export ignore (files not included in git archive)
+.gitignore export-ignore
+.gitattributes export-ignore
+.github/ export-ignore
+.vscode/ export-ignore
+.idea/ export-ignore
+*.log export-ignore
+results/raw/ export-ignore
+tmp/ export-ignore
+temp/ export-ignore
+
+# Language server and IDE files
+.vscode/** linguist-vendored=true
+.idea/** linguist-vendored=true
+*.iml linguist-vendored=true

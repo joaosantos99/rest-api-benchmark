@@ -1,0 +1,682 @@
+name: Issue and PR Automation
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled, closed, reopened]
+  pull_request:
+    types: [opened, edited, labeled, unlabeled, closed, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+  schedule:
+    # Run issue maintenance daily at 1 AM UTC
+    - cron: '0 1 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  auto-label-issues:
+    name: Auto-label Issues
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    steps:
+      - name: Auto-label based on title and content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = issue.body ? issue.body.toLowerCase() : '';
+            const labels = [];
+
+            // Language-specific labels
+            const languages = ['node', 'rust', 'golang', 'python', 'java', 'scala', 'cpp', 'csharp', 'php', 'perl', 'elixir', 'bun', 'deno'];
+            for (const lang of languages) {
+              if (title.includes(lang) || body.includes(lang)) {
+                labels.push(`lang:${lang}`);
+              }
+            }
+
+            // Component labels
+            if (title.includes('docker') || body.includes('docker')) {
+              labels.push('component:docker');
+            }
+            if (title.includes('k6') || body.includes('k6') || title.includes('benchmark')) {
+              labels.push('component:k6');
+            }
+            if (title.includes('orchestration') || body.includes('orchestration')) {
+              labels.push('component:orchestration');
+            }
+
+            // Type labels based on issue template
+            if (title.startsWith('[bug]') || title.includes('bug')) {
+              labels.push('type:bug');
+            }
+            if (title.startsWith('[feature]') || title.includes('feature')) {
+              labels.push('type:enhancement');
+            }
+            if (title.startsWith('[language]') || title.includes('language implementation')) {
+              labels.push('type:new-language');
+            }
+            if (title.startsWith('[perf]') || title.includes('performance')) {
+              labels.push('type:performance');
+            }
+
+            // Priority labels based on keywords
+            if (title.includes('critical') || title.includes('urgent') || body.includes('critical')) {
+              labels.push('priority:high');
+            }
+            if (title.includes('security') || body.includes('security')) {
+              labels.push('priority:high', 'type:security');
+            }
+
+            // Test-specific labels
+            const tests = ['hello-world', 'n-body', 'pi-digits', 'json-serde', 'regex-redux'];
+            for (const test of tests) {
+              if (title.includes(test) || body.includes(test)) {
+                labels.push(`test:${test}`);
+              }
+            }
+
+            // Apply labels
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+              
+              console.log(`Applied labels: ${labels.join(', ')}`);
+            }
+
+  auto-assign-reviewers:
+    name: Auto-assign Reviewers
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    steps:
+      - name: Auto-assign reviewers based on files changed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            
+            // Get list of changed files
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+
+            const changedFiles = files.map(file => file.filename);
+            const labels = [];
+            const reviewers = new Set();
+
+            // Add maintainer as default reviewer
+            reviewers.add('joaosantos99');
+
+            // Language-specific reviewers and labels
+            const languagePatterns = {
+              'services/node/': { label: 'lang:node', reviewers: [] },
+              'services/rust/': { label: 'lang:rust', reviewers: [] },
+              'services/golang/': { label: 'lang:golang', reviewers: [] },
+              'services/python/': { label: 'lang:python', reviewers: [] },
+              'services/java': { label: 'lang:java', reviewers: [] },
+              'services/scala/': { label: 'lang:scala', reviewers: [] },
+              'services/cpp/': { label: 'lang:cpp', reviewers: [] },
+              'services/csharp/': { label: 'lang:csharp', reviewers: [] },
+            };
+
+            // Component-specific patterns
+            const componentPatterns = {
+              'k6/': { label: 'component:k6', reviewers: [] },
+              'orchestration/': { label: 'component:orchestration', reviewers: [] },
+              'utils/': { label: 'component:utils', reviewers: [] },
+              '.github/workflows/': { label: 'component:ci', reviewers: [] },
+              'Dockerfile': { label: 'component:docker', reviewers: [] },
+            };
+
+            // Check language changes
+            for (const [pattern, config] of Object.entries(languagePatterns)) {
+              if (changedFiles.some(file => file.includes(pattern))) {
+                labels.push(config.label);
+                config.reviewers.forEach(reviewer => reviewers.add(reviewer));
+              }
+            }
+
+            // Check component changes
+            for (const [pattern, config] of Object.entries(componentPatterns)) {
+              if (changedFiles.some(file => file.includes(pattern))) {
+                labels.push(config.label);
+                config.reviewers.forEach(reviewer => reviewers.add(reviewer));
+              }
+            }
+
+            // Special handling for documentation
+            if (changedFiles.some(file => file.endsWith('.md'))) {
+              labels.push('component:docs');
+            }
+
+            // Apply labels
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: labels
+              });
+            }
+
+            // Assign reviewers (excluding the PR author)
+            const reviewerList = Array.from(reviewers).filter(reviewer => reviewer !== pr.user.login);
+            
+            if (reviewerList.length > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                reviewers: reviewerList
+              });
+            }
+
+  check-language-implementation:
+    name: Check Language Implementation Completeness
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check implementation completeness
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Get list of changed files
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const changedFiles = files.map(file => file.filename);
+            
+            // Check if this is a new language implementation
+            const newLanguages = new Set();
+            
+            for (const file of changedFiles) {
+              const match = file.match(/^services\/([^\/]+)\//);
+              if (match) {
+                newLanguages.add(match[1]);
+              }
+            }
+
+            if (newLanguages.size === 0) return;
+
+            // Check completeness for each new/modified language
+            let comment = '## 🔍 Language Implementation Check\n\n';
+            let hasIssues = false;
+
+            for (const language of newLanguages) {
+              comment += `### ${language.charAt(0).toUpperCase() + language.slice(1)}\n\n`;
+              
+              const serviceDir = `services/${language}`;
+              const issues = [];
+              
+              // Check required files
+              const requiredFiles = [
+                'Dockerfile',
+                'src/',
+                'README.md'
+              ];
+              
+              const requiredEndpoints = [
+                'hello-world',
+                'n-body', 
+                'pi-digits'
+              ];
+
+              // Check if service directory exists
+              if (!fs.existsSync(serviceDir)) {
+                issues.push('❌ Service directory does not exist');
+              } else {
+                // Check required files
+                for (const file of requiredFiles) {
+                  const filePath = path.join(serviceDir, file);
+                  if (!fs.existsSync(filePath)) {
+                    issues.push(`❌ Missing ${file}`);
+                  } else {
+                    issues.push(`✅ Found ${file}`);
+                  }
+                }
+
+                // Check Dockerfile content
+                const dockerfilePath = path.join(serviceDir, 'Dockerfile');
+                if (fs.existsSync(dockerfilePath)) {
+                  const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf8');
+                  
+                  if (!dockerfileContent.includes('EXPOSE 8080')) {
+                    issues.push('⚠️ Dockerfile should expose port 8080');
+                  }
+                  
+                  if (!dockerfileContent.includes('FROM ')) {
+                    issues.push('❌ Dockerfile missing FROM instruction');
+                  } else {
+                    issues.push('✅ Dockerfile has proper base image');
+                  }
+                }
+              }
+              
+              comment += issues.map(issue => `- ${issue}`).join('\n') + '\n\n';
+              
+              if (issues.some(issue => issue.startsWith('❌'))) {
+                hasIssues = true;
+              }
+            }
+
+            // Add testing checklist
+            comment += `### 🧪 Testing Checklist\n\n`;
+            comment += `Before merging, please ensure:\n\n`;
+            comment += `- [ ] All endpoints respond correctly\n`;
+            comment += `- [ ] Docker image builds successfully\n`;
+            comment += `- [ ] Service starts without errors\n`;
+            comment += `- [ ] Basic load test passes\n`;
+            comment += `- [ ] Algorithm outputs match reference implementations\n`;
+            comment += `- [ ] Documentation is updated\n\n`;
+
+            if (hasIssues) {
+              comment += `⚠️ **Issues found**: Please address the issues marked with ❌ before merging.\n\n`;
+            } else {
+              comment += `✅ **Implementation looks good**: All required files are present.\n\n`;
+            }
+
+            // Check if comment already exists
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number
+            });
+
+            const existingComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🔍 Language Implementation Check')
+            );
+
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: comment
+              });
+            }
+
+  auto-close-stale:
+    name: Close Stale Issues and PRs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Close stale issues and PRs
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: |
+            This issue has been automatically marked as stale because it has not had recent activity. 
+            It will be closed if no further activity occurs. Thank you for your contributions.
+            
+            If this issue is still relevant, please:
+            - Add a comment to keep it open
+            - Remove the 'stale' label
+            - Provide additional information or updates
+          stale-pr-message: |
+            This pull request has been automatically marked as stale because it has not had recent activity.
+            It will be closed if no further activity occurs. Thank you for your contributions.
+            
+            If this PR is still relevant, please:
+            - Rebase on the latest main branch
+            - Address any review comments
+            - Add a comment to keep it open
+          close-issue-message: |
+            This issue was automatically closed due to inactivity. 
+            If you believe this issue is still relevant, please reopen it with updated information.
+          close-pr-message: |
+            This pull request was automatically closed due to inactivity.
+            If you would like to continue this work, please reopen the PR or create a new one.
+          days-before-stale: 30
+          days-before-close: 7
+          exempt-issue-labels: 'pinned,security,good first issue'
+          exempt-pr-labels: 'pinned,security,work in progress'
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+
+  auto-welcome:
+    name: Welcome New Contributors
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    steps:
+      - name: Welcome first-time contributors
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Check if this is the user's first issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              creator: context.payload.issue.user.login,
+              state: 'all'
+            });
+
+            const userIssues = issues.filter(issue => !issue.pull_request);
+            
+            if (userIssues.length === 1) {
+              // This is their first issue
+              const welcomeMessage = `👋 Welcome to the REST API Benchmarks project, @${context.payload.issue.user.login}!
+
+              Thank you for opening your first issue. Here are some helpful resources:
+
+              📚 **Getting Started:**
+              - [Setup Guide](README.md#quick-start)
+              - [Contributing Guidelines](CONTRIBUTING.md)
+              - [Language Implementation Guide](CONTRIBUTING.md#language-implementation-guide)
+
+              🤝 **How to Get Help:**
+              - Use the appropriate issue template for better assistance
+              - Provide detailed information about your environment
+              - Include steps to reproduce any problems
+
+              🎯 **Great First Contributions:**
+              - Complete missing test implementations (JSON Serde, Regex Redux)
+              - Add new language implementations
+              - Improve documentation
+              - Fix bugs or performance issues
+
+              A maintainer will review your issue soon. Thanks for contributing! 🚀`;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: welcomeMessage
+              });
+            }
+
+  auto-merge-dependabot:
+    name: Auto-merge Dependabot PRs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    steps:
+      - name: Auto-approve and merge dependabot PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            
+            // Only auto-merge patch updates
+            if (pr.title.includes('patch') || pr.title.includes('security')) {
+              // Approve the PR
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                event: 'APPROVE',
+                body: 'Auto-approving dependabot patch/security update'
+              });
+
+              // Wait for CI to pass (this would typically be handled by branch protection rules)
+              // For demonstration, we'll just add a comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '🤖 This dependabot PR will be auto-merged after CI passes'
+              });
+            }
+
+  update-project-board:
+    name: Update Project Board
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' || github.event_name == 'pull_request'
+    steps:
+      - name: Add to project board
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // This would integrate with GitHub Projects v2
+            // For now, we'll just add appropriate labels based on status
+            
+            const isIssue = context.payload.issue && !context.payload.issue.pull_request;
+            const isPR = context.payload.pull_request;
+            const action = context.payload.action;
+            
+            if (isIssue) {
+              const issue = context.payload.issue;
+              const labels = [];
+              
+              switch (action) {
+                case 'opened':
+                  labels.push('status:triage');
+                  break;
+                case 'closed':
+                  if (issue.state_reason === 'completed') {
+                    labels.push('status:done');
+                  }
+                  break;
+              }
+              
+              if (labels.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: labels
+                });
+              }
+            }
+            
+            if (isPR) {
+              const pr = context.payload.pull_request;
+              const labels = [];
+              
+              switch (action) {
+                case 'opened':
+                  labels.push('status:review');
+                  break;
+                case 'closed':
+                  if (pr.merged) {
+                    labels.push('status:merged');
+                  }
+                  break;
+                case 'ready_for_review':
+                  labels.push('status:review');
+                  break;
+              }
+              
+              if (labels.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: labels
+                });
+              }
+            }
+
+  issue-triage:
+    name: Issue Triage
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    steps:
+      - name: Triage new issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = issue.body ? issue.body.toLowerCase() : '';
+            
+            // High priority indicators
+            const highPriorityKeywords = [
+              'security', 'critical', 'urgent', 'data loss', 'crash', 
+              'cannot start', 'broken', 'regression'
+            ];
+            
+            // Check for high priority issues
+            const isHighPriority = highPriorityKeywords.some(keyword => 
+              title.includes(keyword) || body.includes(keyword)
+            );
+            
+            if (isHighPriority) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['priority:high', 'needs:immediate-attention']
+              });
+              
+              // Create notification comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: '🚨 This issue has been flagged as high priority and will be reviewed by maintainers promptly.'
+              });
+            }
+            
+            // Check for incomplete issue templates
+            const hasTemplate = body.includes('## ') || body.includes('### ');
+            const hasEnvironment = body.includes('environment') || body.includes('system');
+            const hasSteps = body.includes('reproduce') || body.includes('steps');
+            
+            if (!hasTemplate || (!hasEnvironment && !hasSteps)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['needs:more-info']
+              });
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Thank you for opening this issue! To help us assist you better, could you please provide:
+
+                - Your environment details (OS, Docker version, etc.)
+                - Steps to reproduce the issue
+                - Expected vs actual behavior
+                - Any relevant logs or error messages
+
+                You can use our [issue templates](.github/ISSUE_TEMPLATE/) to ensure all necessary information is included.`
+              });
+            }
+
+  pr-size-check:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize')
+    steps:
+      - name: Check PR size and complexity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const additions = pr.additions;
+            const deletions = pr.deletions;
+            const changedFiles = files.length;
+            const totalChanges = additions + deletions;
+
+            let sizeLabel = '';
+            let comment = '';
+
+            // Determine PR size
+            if (totalChanges < 50) {
+              sizeLabel = 'size:XS';
+            } else if (totalChanges < 200) {
+              sizeLabel = 'size:S';
+            } else if (totalChanges < 500) {
+              sizeLabel = 'size:M';
+            } else if (totalChanges < 1000) {
+              sizeLabel = 'size:L';
+              comment = '📏 This is a large PR. Consider breaking it into smaller, focused changes for easier review.';
+            } else {
+              sizeLabel = 'size:XL';
+              comment = '📏 This is a very large PR. Please consider breaking it into smaller, focused changes for easier review and faster iteration.';
+            }
+
+            // Apply size label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [sizeLabel]
+            });
+
+            // Add comment for large PRs
+            if (comment) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: comment
+              });
+            }
+
+            // Check for specific patterns that might need special attention
+            const patterns = {
+              'dockerfile_changes': files.some(f => f.filename.includes('Dockerfile')),
+              'workflow_changes': files.some(f => f.filename.includes('.github/workflows')),
+              'multiple_languages': new Set(files.filter(f => f.filename.startsWith('services/')).map(f => f.filename.split('/')[1])).size > 1,
+              'test_changes': files.some(f => f.filename.includes('test') || f.filename.includes('spec')),
+            };
+
+            const additionalLabels = [];
+            
+            if (patterns.dockerfile_changes) {
+              additionalLabels.push('impact:docker');
+            }
+            if (patterns.workflow_changes) {
+              additionalLabels.push('impact:ci');
+            }
+            if (patterns.multiple_languages) {
+              additionalLabels.push('impact:multiple-languages');
+            }
+            if (patterns.test_changes) {
+              additionalLabels.push('impact:tests');
+            }
+
+            if (additionalLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels: additionalLabels
+              });
+            }

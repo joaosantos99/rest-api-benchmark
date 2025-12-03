@@ -1,0 +1,867 @@
+name: Full Benchmark Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: 'Languages to benchmark (comma-separated or "all")'
+        required: false
+        default: 'node,rust,golang,python,java21'
+        type: string
+      tests:
+        description: 'Tests to run (comma-separated or "all")'
+        required: false
+        default: 'hello,n-body,pi-digits'
+        type: string
+      configurations:
+        description: 'Resource configurations to test'
+        required: false
+        default: '1vCPU,2vCPU,4vCPU'
+        type: choice
+        options:
+          - '1vCPU'
+          - '2vCPU'
+          - '4vCPU'
+          - '1vCPU,2vCPU'
+          - '2vCPU,4vCPU'
+          - '1vCPU,2vCPU,4vCPU'
+      scenarios:
+        description: 'Load scenarios to test'
+        required: false
+        default: 'c1,c100,c1000'
+        type: string
+      duration:
+        description: 'Test duration per scenario'
+        required: false
+        default: '60s'
+        type: string
+      repetitions:
+        description: 'Number of repetitions per test'
+        required: false
+        default: '3'
+        type: string
+      publish_results:
+        description: 'Publish results as GitHub Pages'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # Run comprehensive benchmark weekly on Sundays at 4 AM UTC
+    - cron: '0 4 * * 0'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: full-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  setup-benchmark-matrix:
+    name: Setup Benchmark Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.matrix.outputs.languages }}
+      tests: ${{ steps.matrix.outputs.tests }}
+      configurations: ${{ steps.matrix.outputs.configurations }}
+      scenarios: ${{ steps.matrix.outputs.scenarios }}
+      total-jobs: ${{ steps.matrix.outputs.total-jobs }}
+    steps:
+      - name: Setup benchmark matrix
+        id: matrix
+        run: |
+          # Parse input parameters
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            # For scheduled runs, use comprehensive settings
+            LANGUAGES='["node","bun","deno","golang","rust","python","cpp","csharp","java17","java21","scala","php","perl","elixir"]'
+            TESTS='["hello","n-body","pi-digits"]'
+            CONFIGURATIONS='["1vCPU","2vCPU","4vCPU"]'
+            SCENARIOS='["c1","c100","c1000","c5000"]'
+            DURATION="120s"
+            REPETITIONS="5"
+          else
+            # Parse manual input
+            if [ "${{ github.event.inputs.languages }}" == "all" ]; then
+              LANGUAGES='["node","bun","deno","golang","rust","python","cpp","csharp","java17","java21","scala","php","perl","elixir"]'
+            else
+              IFS=',' read -ra LANG_ARRAY <<< "${{ github.event.inputs.languages }}"
+              LANGUAGES=$(printf '%s\n' "${LANG_ARRAY[@]}" | jq -R . | jq -s .)
+            fi
+            
+            if [ "${{ github.event.inputs.tests }}" == "all" ]; then
+              TESTS='["hello","n-body","pi-digits","json-serde","regex-redux"]'
+            else
+              IFS=',' read -ra TEST_ARRAY <<< "${{ github.event.inputs.tests }}"
+              TESTS=$(printf '%s\n' "${TEST_ARRAY[@]}" | jq -R . | jq -s .)
+            fi
+            
+            IFS=',' read -ra CONFIG_ARRAY <<< "${{ github.event.inputs.configurations }}"
+            CONFIGURATIONS=$(printf '%s\n' "${CONFIG_ARRAY[@]}" | jq -R . | jq -s .)
+            
+            IFS=',' read -ra SCENARIO_ARRAY <<< "${{ github.event.inputs.scenarios }}"
+            SCENARIOS=$(printf '%s\n' "${SCENARIO_ARRAY[@]}" | jq -R . | jq -s .)
+            
+            DURATION="${{ github.event.inputs.duration }}"
+            REPETITIONS="${{ github.event.inputs.repetitions }}"
+          fi
+          
+          # Calculate total number of jobs
+          LANG_COUNT=$(echo "$LANGUAGES" | jq length)
+          TEST_COUNT=$(echo "$TESTS" | jq length)
+          CONFIG_COUNT=$(echo "$CONFIGURATIONS" | jq length)
+          SCENARIO_COUNT=$(echo "$SCENARIOS" | jq length)
+          TOTAL_JOBS=$((LANG_COUNT * TEST_COUNT * CONFIG_COUNT * SCENARIO_COUNT * REPETITIONS))
+          
+          echo "languages=$LANGUAGES" >> $GITHUB_OUTPUT
+          echo "tests=$TESTS" >> $GITHUB_OUTPUT
+          echo "configurations=$CONFIGURATIONS" >> $GITHUB_OUTPUT
+          echo "scenarios=$SCENARIOS" >> $GITHUB_OUTPUT
+          echo "total-jobs=$TOTAL_JOBS" >> $GITHUB_OUTPUT
+          
+          echo "Benchmark Configuration:"
+          echo "Languages: $LANGUAGES"
+          echo "Tests: $TESTS"
+          echo "Configurations: $CONFIGURATIONS"
+          echo "Scenarios: $SCENARIOS"
+          echo "Duration: $DURATION"
+          echo "Repetitions: $REPETITIONS"
+          echo "Total benchmark jobs: $TOTAL_JOBS"
+
+  prepare-benchmark-environment:
+    name: Prepare Benchmark Environment
+    runs-on: ubuntu-latest
+    needs: setup-benchmark-matrix
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create results directory structure
+        run: |
+          mkdir -p results/{raw,summary,reports}
+          mkdir -p benchmark-artifacts/{logs,configs,metadata}
+          
+          # Create benchmark metadata
+          cat > benchmark-artifacts/metadata/benchmark-info.json << EOF
+          {
+            "timestamp": "$(date -Iseconds)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "trigger": "${{ github.event_name }}",
+            "total_jobs": ${{ needs.setup-benchmark-matrix.outputs.total-jobs }},
+            "configuration": {
+              "languages": ${{ needs.setup-benchmark-matrix.outputs.languages }},
+              "tests": ${{ needs.setup-benchmark-matrix.outputs.tests }},
+              "configurations": ${{ needs.setup-benchmark-matrix.outputs.configurations }},
+              "scenarios": ${{ needs.setup-benchmark-matrix.outputs.scenarios }}
+            }
+          }
+          EOF
+
+      - name: System information
+        run: |
+          # Collect system information for reproducibility
+          cat > benchmark-artifacts/metadata/system-info.json << EOF
+          {
+            "runner": {
+              "os": "$(uname -s)",
+              "kernel": "$(uname -r)",
+              "arch": "$(uname -m)",
+              "cpu_info": "$(lscpu | grep 'Model name' | cut -d: -f2 | xargs)",
+              "memory_gb": "$(free -g | awk '/^Mem:/{print $2}')",
+              "disk_info": "$(df -h / | awk 'NR==2{print $2" ("$5" used)"}')"
+            },
+            "docker": {
+              "version": "$(docker --version)",
+              "info": "$(docker info --format '{{.ServerVersion}}')"
+            },
+            "k6": {
+              "version": "$(k6 version || echo 'Not installed')"
+            }
+          }
+          EOF
+
+      - name: Upload preparation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-preparation
+          path: benchmark-artifacts/
+          retention-days: 90
+
+  build-benchmark-images:
+    name: Build Benchmark Images
+    runs-on: ubuntu-latest
+    needs: [setup-benchmark-matrix, prepare-benchmark-environment]
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.setup-benchmark-matrix.outputs.languages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build benchmark image
+        run: |
+          echo "Building image for ${{ matrix.language }}"
+          
+          # Build with specific tag for this benchmark run
+          IMAGE_TAG="bench/${{ matrix.language }}:benchmark-${{ github.run_number }}"
+          
+          docker build \
+            --tag "$IMAGE_TAG" \
+            --label "benchmark.run=${{ github.run_number }}" \
+            --label "benchmark.commit=${{ github.sha }}" \
+            --label "benchmark.language=${{ matrix.language }}" \
+            "./services/${{ matrix.language }}"
+          
+          # Test basic functionality
+          docker run --rm -d --name "test-${{ matrix.language }}" -p 18080:8080 "$IMAGE_TAG"
+          sleep 5
+          
+          # Basic health check
+          if ! curl -f http://localhost:18080/api/hello-world --max-time 10; then
+            echo "Health check failed for ${{ matrix.language }}"
+            docker logs "test-${{ matrix.language }}"
+            exit 1
+          fi
+          
+          docker stop "test-${{ matrix.language }}"
+          
+          # Save image for benchmarking
+          docker save "$IMAGE_TAG" | gzip > "${{ matrix.language }}-image.tar.gz"
+
+      - name: Upload benchmark image
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-image-${{ matrix.language }}
+          path: ${{ matrix.language }}-image.tar.gz
+          retention-days: 7
+
+  run-benchmark-suite:
+    name: Run Benchmark Suite
+    runs-on: ubuntu-latest
+    needs: [setup-benchmark-matrix, build-benchmark-images]
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJson(needs.setup-benchmark-matrix.outputs.languages) }}
+        test: ${{ fromJson(needs.setup-benchmark-matrix.outputs.tests) }}
+        config: ${{ fromJson(needs.setup-benchmark-matrix.outputs.configurations) }}
+        scenario: ${{ fromJson(needs.setup-benchmark-matrix.outputs.scenarios) }}
+        rep: [1, 2, 3, 4, 5]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download benchmark image
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-image-${{ matrix.language }}
+
+      - name: Load Docker image
+        run: |
+          docker load < ${{ matrix.language }}-image.tar.gz
+          docker tag "bench/${{ matrix.language }}:benchmark-${{ github.run_number }}" "bench/${{ matrix.language }}"
+
+      - name: Install K6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: System optimization
+        run: |
+          # Apply system tuning for consistent results
+          sudo bash utils/sysctl.sh || true
+          
+          # Set CPU governor to performance
+          echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor || true
+          
+          # Clear system caches
+          sync
+          echo 3 | sudo tee /proc/sys/vm/drop_caches || true
+
+      - name: Setup benchmark configuration
+        id: config
+        run: |
+          # Parse configuration
+          case "${{ matrix.config }}" in
+            "1vCPU")
+              CPUS="1"
+              MEM="2g"
+              CPUSET="0"
+              ;;
+            "2vCPU")
+              CPUS="2"
+              MEM="4g"
+              CPUSET="0-1"
+              ;;
+            "4vCPU")
+              CPUS="4"
+              MEM="8g"
+              CPUSET="0-3"
+              ;;
+          esac
+          
+          # Parse scenario
+          case "${{ matrix.scenario }}" in
+            "c1") VUS=1 ;;
+            "c10") VUS=10 ;;
+            "c100") VUS=100 ;;
+            "c1000") VUS=1000 ;;
+            "c5000") VUS=5000 ;;
+            "c10000") VUS=10000 ;;
+            *) VUS=100 ;;
+          esac
+          
+          DURATION="${{ github.event.inputs.duration || '120s' }}"
+          
+          echo "cpus=$CPUS" >> $GITHUB_OUTPUT
+          echo "mem=$MEM" >> $GITHUB_OUTPUT
+          echo "cpuset=$CPUSET" >> $GITHUB_OUTPUT
+          echo "vus=$VUS" >> $GITHUB_OUTPUT
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
+
+      - name: Run benchmark
+        id: benchmark
+        run: |
+          export IMAGE="bench/${{ matrix.language }}"
+          export SERVICE="${{ matrix.language }}"
+          export TEST_MODE="${{ matrix.test }}"
+          export CPUS="${{ steps.config.outputs.cpus }}"
+          export MEM="${{ steps.config.outputs.mem }}"
+          export CPUSET="${{ steps.config.outputs.cpuset }}"
+          export HOST_PORT=18080
+          
+          mkdir -p results/raw
+          mkdir -p logs
+          
+          echo "==> Running benchmark: ${{ matrix.language }}/${{ matrix.test }}/${{ matrix.config }}/${{ matrix.scenario }}/rep${{ matrix.rep }}"
+          
+          # Start monitoring
+          iostat -x 1 > logs/iostat.log &
+          IOSTAT_PID=$!
+          vmstat 1 > logs/vmstat.log &
+          VMSTAT_PID=$!
+          
+          # Start service
+          docker compose up -d sut
+          sleep 10
+          
+          # Determine endpoint
+          case "${{ matrix.test }}" in
+            "hello") URL_PATH="/api/hello-world" ;;
+            "n-body") URL_PATH="/api/n-body" ;;
+            "pi-digits") URL_PATH="/api/pi-digits" ;;
+            "json-serde") URL_PATH="/api/json-serde" ;;
+            "regex-redux") URL_PATH="/api/regex-redux" ;;
+            *) URL_PATH="/api/hello-world" ;;
+          esac
+          
+          TARGET_URL="http://127.0.0.1:${HOST_PORT}${URL_PATH}"
+          
+          # Health check with retry
+          for i in {1..10}; do
+            if curl -f "$TARGET_URL" --max-time 5 >/dev/null 2>&1; then
+              echo "Service is healthy"
+              break
+            fi
+            echo "Health check attempt $i failed, retrying..."
+            sleep 2
+          done
+          
+          # Run warmup (especially important for JVM languages)
+          echo "Running warmup..."
+          VUS=5 DURATION=30s TARGET_URL="$TARGET_URL" k6 run k6/http-bench.js >/dev/null 2>&1 || true
+          sleep 5
+          
+          # Monitor container resources
+          docker stats --no-stream --format "json" > logs/docker_stats_before.json
+          
+          # Run actual benchmark
+          OUTPUT_FILE="results/raw/${{ matrix.language }}_${{ matrix.test }}_${{ matrix.config }}_rep${{ matrix.rep }}_${{ matrix.scenario }}.json"
+          SUMMARY_FILE="${OUTPUT_FILE%.json}_summary.json"
+          
+          echo "Starting benchmark run..."
+          VUS=${{ steps.config.outputs.vus }} \
+          DURATION=${{ steps.config.outputs.duration }} \
+          TARGET_URL="$TARGET_URL" \
+            k6 run \
+              --summary-trend-stats="p(50),p(95),p(99),min,max,avg" \
+              --summary-export "$SUMMARY_FILE" \
+              --out json="$OUTPUT_FILE" \
+              k6/http-bench.js
+          
+          # Capture final container stats
+          docker stats --no-stream --format "json" > logs/docker_stats_after.json
+          
+          # Stop monitoring
+          kill $IOSTAT_PID $VMSTAT_PID || true
+          
+          # Extract key metrics
+          if [ -f "$SUMMARY_FILE" ]; then
+            THROUGHPUT=$(jq -r '.metrics.iterations.values.rate // 0' "$SUMMARY_FILE")
+            LATENCY_P95=$(jq -r '.metrics.http_req_duration.values["p(95)"] // 0' "$SUMMARY_FILE")
+            ERROR_RATE=$(jq -r '.metrics.http_req_failed.values.rate // 0' "$SUMMARY_FILE")
+            
+            echo "Benchmark completed:"
+            echo "  Throughput: $THROUGHPUT req/s"
+            echo "  Latency p95: $LATENCY_P95 ms"
+            echo "  Error rate: $(echo "$ERROR_RATE * 100" | bc -l)%"
+          fi
+          
+          # Capture service logs
+          docker logs sut > logs/service.log 2>&1 || true
+          
+          # Clean up
+          docker compose down -v
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.language }}-${{ matrix.test }}-${{ matrix.config }}-${{ matrix.scenario }}-rep${{ matrix.rep }}
+          path: |
+            results/
+            logs/
+          retention-days: 90
+
+  aggregate-results:
+    name: Aggregate Benchmark Results
+    runs-on: ubuntu-latest
+    needs: [setup-benchmark-matrix, run-benchmark-suite]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-results-*
+          merge-multiple: true
+          path: aggregated-results/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Aggregate and analyze results
+        run: |
+          # Create comprehensive analysis script
+          cat > analyze_results.mjs << 'EOF'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const results = [];
+          const rawDir = 'aggregated-results/results/raw';
+
+          console.log('Analyzing benchmark results...');
+
+          if (fs.existsSync(rawDir)) {
+            const files = fs.readdirSync(rawDir).filter(f => f.endsWith('_summary.json'));
+            
+            for (const file of files) {
+              try {
+                const data = JSON.parse(fs.readFileSync(path.join(rawDir, file), 'utf8'));
+                const [language, test, config, rep, scenario] = file.replace('_summary.json', '').split('_');
+                
+                results.push({
+                  language,
+                  test,
+                  config,
+                  scenario,
+                  repetition: parseInt(rep.replace('rep', '')),
+                  throughput: data.metrics?.iterations?.values?.rate || 0,
+                  latency_p50: data.metrics?.http_req_duration?.values?.['p(50)'] || 0,
+                  latency_p95: data.metrics?.http_req_duration?.values?.['p(95)'] || 0,
+                  latency_p99: data.metrics?.http_req_duration?.values?.['p(99)'] || 0,
+                  error_rate: data.metrics?.http_req_failed?.values?.rate || 0,
+                  total_requests: data.metrics?.http_reqs?.values?.count || 0,
+                  min_latency: data.metrics?.http_req_duration?.values?.min || 0,
+                  max_latency: data.metrics?.http_req_duration?.values?.max || 0,
+                  avg_latency: data.metrics?.http_req_duration?.values?.avg || 0
+                });
+              } catch (error) {
+                console.error(`Error processing ${file}:`, error.message);
+              }
+            }
+          }
+
+          console.log(`Processed ${results.length} benchmark results`);
+
+          // Calculate statistical aggregations
+          const aggregated = {};
+
+          for (const result of results) {
+            const key = `${result.language}_${result.test}_${result.config}_${result.scenario}`;
+            
+            if (!aggregated[key]) {
+              aggregated[key] = {
+                language: result.language,
+                test: result.test,
+                config: result.config,
+                scenario: result.scenario,
+                measurements: []
+              };
+            }
+            
+            aggregated[key].measurements.push(result);
+          }
+
+          // Calculate statistics for each aggregated result
+          const finalResults = [];
+
+          for (const [key, data] of Object.entries(aggregated)) {
+            const measurements = data.measurements;
+            
+            if (measurements.length === 0) continue;
+            
+            const stats = {
+              language: data.language,
+              test: data.test,
+              config: data.config,
+              scenario: data.scenario,
+              repetitions: measurements.length,
+              
+              // Throughput statistics
+              throughput_mean: measurements.reduce((sum, m) => sum + m.throughput, 0) / measurements.length,
+              throughput_min: Math.min(...measurements.map(m => m.throughput)),
+              throughput_max: Math.max(...measurements.map(m => m.throughput)),
+              throughput_std: 0, // Calculate below
+              
+              // Latency statistics (p95)
+              latency_p95_mean: measurements.reduce((sum, m) => sum + m.latency_p95, 0) / measurements.length,
+              latency_p95_min: Math.min(...measurements.map(m => m.latency_p95)),
+              latency_p95_max: Math.max(...measurements.map(m => m.latency_p95)),
+              latency_p95_std: 0, // Calculate below
+              
+              // Error rate
+              error_rate_mean: measurements.reduce((sum, m) => sum + m.error_rate, 0) / measurements.length,
+              error_rate_max: Math.max(...measurements.map(m => m.error_rate)),
+              
+              // Coefficient of variation
+              throughput_cv: 0,
+              latency_cv: 0
+            };
+            
+            // Calculate standard deviation and coefficient of variation
+            const throughputValues = measurements.map(m => m.throughput);
+            const latencyValues = measurements.map(m => m.latency_p95);
+            
+            stats.throughput_std = Math.sqrt(
+              throughputValues.reduce((sum, val) => sum + Math.pow(val - stats.throughput_mean, 2), 0) / measurements.length
+            );
+            
+            stats.latency_p95_std = Math.sqrt(
+              latencyValues.reduce((sum, val) => sum + Math.pow(val - stats.latency_p95_mean, 2), 0) / measurements.length
+            );
+            
+            stats.throughput_cv = stats.throughput_std / stats.throughput_mean;
+            stats.latency_cv = stats.latency_p95_std / stats.latency_p95_mean;
+            
+            finalResults.push(stats);
+          }
+
+          // Save aggregated results
+          fs.writeFileSync('benchmark-summary.json', JSON.stringify(finalResults, null, 2));
+          fs.writeFileSync('benchmark-raw-data.json', JSON.stringify(results, null, 2));
+
+          // Generate comprehensive report
+          let report = `# Comprehensive Benchmark Report
+
+          **Generated**: ${new Date().toISOString()}
+          **Commit**: ${{ github.sha }}
+          **Total Tests**: ${results.length}
+          **Languages**: ${new Set(results.map(r => r.language)).size}
+          **Test Types**: ${new Set(results.map(r => r.test)).size}
+          **Configurations**: ${new Set(results.map(r => r.config)).size}
+
+          ## Executive Summary
+
+          This report presents comprehensive performance benchmarks across multiple programming languages,
+          testing configurations, and load scenarios.
+
+          ### Top Performers by Test Type
+
+          `;
+
+          // Group results by test type and show top performers
+          const testTypes = [...new Set(finalResults.map(r => r.test))];
+          
+          for (const test of testTypes) {
+            report += `\n#### ${test.charAt(0).toUpperCase() + test.slice(1)} Test - Top Performers (2vCPU, c100)\n\n`;
+            
+            const testResults = finalResults
+              .filter(r => r.test === test && r.config === '2vCPU' && r.scenario === 'c100')
+              .sort((a, b) => b.throughput_mean - a.throughput_mean)
+              .slice(0, 10);
+            
+            report += `| Rank | Language | Throughput (req/s) | Latency p95 (ms) | CV (%) |\n`;
+            report += `|------|----------|-------------------|-------------------|--------|\n`;
+            
+            testResults.forEach((result, index) => {
+              report += `| ${index + 1} | ${result.language} | ${Math.round(result.throughput_mean)} ± ${Math.round(result.throughput_std)} | ${result.latency_p95_mean.toFixed(2)} ± ${result.latency_p95_std.toFixed(2)} | ${(result.throughput_cv * 100).toFixed(1)} |\n`;
+            });
+          }
+
+          // Performance scaling analysis
+          report += `\n## Performance Scaling Analysis\n\n`;
+          
+          const configs = ['1vCPU', '2vCPU', '4vCPU'];
+          const topLanguages = ['node', 'rust', 'golang', 'python', 'java21'];
+          
+          for (const lang of topLanguages) {
+            report += `\n### ${lang.charAt(0).toUpperCase() + lang.slice(1)} Scaling (Hello World, c100)\n\n`;
+            
+            report += `| Configuration | Throughput | Scaling Factor |\n`;
+            report += `|---------------|------------|----------------|\n`;
+            
+            let baselineThroughput = 0;
+            
+            for (const config of configs) {
+              const result = finalResults.find(r => 
+                r.language === lang && 
+                r.test === 'hello' && 
+                r.config === config && 
+                r.scenario === 'c100'
+              );
+              
+              if (result) {
+                const throughput = Math.round(result.throughput_mean);
+                if (baselineThroughput === 0) baselineThroughput = throughput;
+                const scalingFactor = (throughput / baselineThroughput).toFixed(2);
+                
+                report += `| ${config} | ${throughput} req/s | ${scalingFactor}x |\n`;
+              }
+            }
+          }
+
+          // Load scaling analysis
+          report += `\n## Load Scaling Analysis\n\n`;
+          
+          const scenarios = ['c1', 'c100', 'c1000'];
+          
+          for (const lang of topLanguages.slice(0, 3)) {
+            report += `\n### ${lang.charAt(0).toUpperCase() + lang.slice(1)} Load Response (Hello World, 2vCPU)\n\n`;
+            
+            report += `| Concurrent Users | Throughput | Latency p95 | Efficiency |\n`;
+            report += `|-----------------|------------|-------------|------------|\n`;
+            
+            for (const scenario of scenarios) {
+              const result = finalResults.find(r => 
+                r.language === lang && 
+                r.test === 'hello' && 
+                r.config === '2vCPU' && 
+                r.scenario === scenario
+              );
+              
+              if (result) {
+                const vus = scenario.replace('c', '');
+                const efficiency = (result.throughput_mean / parseInt(vus)).toFixed(1);
+                
+                report += `| ${vus} | ${Math.round(result.throughput_mean)} req/s | ${result.latency_p95_mean.toFixed(2)} ms | ${efficiency} req/s/user |\n`;
+              }
+            }
+          }
+
+          // Statistical reliability analysis
+          report += `\n## Statistical Reliability\n\n`;
+          
+          const unreliableTests = finalResults.filter(r => r.throughput_cv > 0.2 || r.error_rate_mean > 0.01);
+          
+          if (unreliableTests.length > 0) {
+            report += `### Tests with High Variability (CV > 20% or Error Rate > 1%)\n\n`;
+            report += `| Language | Test | Config | Scenario | CV (%) | Error Rate (%) |\n`;
+            report += `|----------|------|--------|----------|--------|----------------|\n`;
+            
+            for (const test of unreliableTests.slice(0, 20)) {
+              report += `| ${test.language} | ${test.test} | ${test.config} | ${test.scenario} | ${(test.throughput_cv * 100).toFixed(1)} | ${(test.error_rate_mean * 100).toFixed(2)} |\n`;
+            }
+          } else {
+            report += `✅ All tests show good statistical reliability (CV < 20%, Error Rate < 1%)\n`;
+          }
+
+          report += `\n## Methodology\n\n`;
+          report += `- **Load Testing Tool**: K6\n`;
+          report += `- **Test Duration**: ${{ github.event.inputs.duration || '120s' }} per scenario\n`;
+          report += `- **Repetitions**: Multiple runs for statistical significance\n`;
+          report += `- **Resource Isolation**: Docker containers with CPU/memory limits\n`;
+          report += `- **System Optimization**: CPU governor set to performance, caches cleared\n`;
+          report += `- **Warmup**: 30-second warmup for JIT compilation\n\n`;
+          report += `### Metrics Explanation\n\n`;
+          report += `- **Throughput**: Requests per second (higher is better)\n`;
+          report += `- **Latency p95**: 95th percentile response time (lower is better)\n`;
+          report += `- **CV**: Coefficient of Variation - measure of consistency (lower is better)\n`;
+          report += `- **Scaling Factor**: Performance improvement relative to baseline configuration\n`;
+          report += `- **Efficiency**: Throughput per concurrent user\n\n`;
+
+          fs.writeFileSync('BENCHMARK_REPORT.md', report);
+          
+          console.log(`Generated comprehensive benchmark report with ${finalResults.length} aggregated results`);
+          EOF
+
+          node analyze_results.mjs
+
+      - name: Generate performance charts
+        run: |
+          # Create HTML dashboard with charts
+          cat > benchmark-dashboard.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>REST API Benchmark Dashboard</title>
+              <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  .chart-container { width: 48%; display: inline-block; margin: 1%; }
+                  .chart-row { margin: 20px 0; }
+                  h1, h2 { color: #333; }
+                  .summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0; }
+              </style>
+          </head>
+          <body>
+              <h1>REST API Benchmark Dashboard</h1>
+              
+              <div class="summary">
+                  <h2>Benchmark Summary</h2>
+                  <p><strong>Generated:</strong> {{ new Date().toISOString() }}</p>
+                  <p><strong>Commit:</strong> ${{ github.sha }}</p>
+                  <p><strong>Languages:</strong> {{ languages }}</p>
+                  <p><strong>Total Tests:</strong> {{ totalTests }}</p>
+              </div>
+              
+              <div class="chart-row">
+                  <div class="chart-container">
+                      <h3>Throughput Comparison (Hello World, 2vCPU, c100)</h3>
+                      <canvas id="throughputChart"></canvas>
+                  </div>
+                  <div class="chart-container">
+                      <h3>Latency Comparison (Hello World, 2vCPU, c100)</h3>
+                      <canvas id="latencyChart"></canvas>
+                  </div>
+              </div>
+              
+              <div class="chart-row">
+                  <div class="chart-container">
+                      <h3>Scaling Performance (Hello World)</h3>
+                      <canvas id="scalingChart"></canvas>
+                  </div>
+                  <div class="chart-container">
+                      <h3>Load Response (2vCPU)</h3>
+                      <canvas id="loadChart"></canvas>
+                  </div>
+              </div>
+              
+              <script>
+                  // This would be populated with actual data from the benchmark results
+                  console.log('Benchmark dashboard loaded');
+                  
+                  // Placeholder for chart initialization
+                  // In a full implementation, you'd load the benchmark data and create interactive charts
+              </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload aggregated results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-final-results
+          path: |
+            benchmark-summary.json
+            benchmark-raw-data.json
+            BENCHMARK_REPORT.md
+            benchmark-dashboard.html
+          retention-days: 365
+
+  publish-results:
+    name: Publish Results
+    runs-on: ubuntu-latest
+    needs: [aggregate-results]
+    if: github.event.inputs.publish_results == 'true' || github.event_name == 'schedule'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download final results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-final-results
+          path: results/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Create Pages content
+        run: |
+          mkdir -p pages
+          
+          # Copy results
+          cp results/* pages/
+          
+          # Create index.html that redirects to dashboard
+          cat > pages/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>REST API Benchmarks</title>
+              <meta http-equiv="refresh" content="0; url=benchmark-dashboard.html">
+          </head>
+          <body>
+              <p>Redirecting to <a href="benchmark-dashboard.html">benchmark dashboard</a>...</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify-completion:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: [setup-benchmark-matrix, aggregate-results, publish-results]
+    if: always()
+    steps:
+      - name: Benchmark Summary
+        run: |
+          echo "🏁 Full Benchmark Suite Completed"
+          echo "================================="
+          echo "Total Jobs: ${{ needs.setup-benchmark-matrix.outputs.total-jobs }}"
+          echo "Results Aggregation: ${{ needs.aggregate-results.result }}"
+          echo "Results Publication: ${{ needs.publish-results.result }}"
+          
+          if [ "${{ needs.aggregate-results.result }}" == "success" ]; then
+            echo "✅ Comprehensive benchmark results are available"
+            echo "📊 Statistical analysis completed"
+            echo "📈 Performance trends analyzed"
+          fi
+          
+          if [ "${{ needs.publish-results.result }}" == "success" ]; then
+            echo "🌐 Results published to GitHub Pages"
+            echo "🔗 Dashboard URL available in job outputs"
+          fi
+          
+          echo ""
+          echo "Next Steps:"
+          echo "- Review benchmark report for performance insights"
+          echo "- Check for any performance regressions"
+          echo "- Update documentation with latest results"

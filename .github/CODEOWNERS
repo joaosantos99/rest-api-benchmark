@@ -1,0 +1,31 @@
+# Code Owners for REST API Benchmarks
+
+# <https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners>
+
+# Global ownership
+
+- @joaosantos99
+
+# Language implementations
+
+/services/ @joaosantos99 /services/node/ @joaosantos99 /services/rust/ @joaosantos99 /services/golang/ @joaosantos99 /services/java*/ @joaosantos99 /services/python/ @joaosantos99 /services/bun/ @joaosantos99 /services/deno/ @joaosantos99 /services/cpp/ @joaosantos99 /services/csharp/ @joaosantos99 /services/scala/ @joaosantos99 /services/elixir/ @joaosantos99 /services/perl/ @joaosantos99 /services/php/ @joaosantos99
+
+# Testing and orchestration
+
+/k6/ @joaosantos99 /orchestration/ @joaosantos99 /utils/ @joaosantos99
+
+# Documentation
+
+*.md @joaosantos99 /docs/ @joaosantos99
+
+# Configuration files
+
+_.yml @joaosantos99_ .yaml @joaosantos99 _.json @joaosantos99 Dockerfile_ @joaosantos99 compose.yml @joaosantos99 Makefile @joaosantos99
+
+# GitHub configuration
+
+/.github/ @joaosantos99
+
+# Results and analysis
+
+/results/ @joaosantos99

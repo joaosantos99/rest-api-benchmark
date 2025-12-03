@@ -1,0 +1,494 @@
+name: Performance Monitoring
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'services/**'
+      - 'k6/**'
+      - 'orchestration/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/**'
+      - 'k6/**'
+      - 'orchestration/**'
+  schedule:
+    # Run performance monitoring daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Services to benchmark (comma-separated, or "all")'
+        required: false
+        default: 'node,rust,golang,python,java21'
+        type: string
+      duration:
+        description: 'Test duration per scenario'
+        required: false
+        default: '60s'
+        type: string
+      scenarios:
+        description: 'Load scenarios to run (comma-separated)'
+        required: false
+        default: 'c1,c100,c1000'
+        type: string
+
+env:
+  PERFORMANCE_THRESHOLD_DEGRADATION: 20 # % performance degradation threshold
+  MEMORY_THRESHOLD_MB: 512 # Memory usage threshold in MB
+
+jobs:
+  setup-matrix:
+    name: Setup Test Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.matrix.outputs.services }}
+      scenarios: ${{ steps.matrix.outputs.scenarios }}
+      tests: ${{ steps.matrix.outputs.tests }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup test matrix
+        id: matrix
+        run: |
+          # Determine services to test
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.services }}" == "all" ]; then
+              SERVICES='["node","bun","deno","golang","rust","python","cpp","csharp","java17","java21","scala","php","perl","elixir"]'
+            else
+              IFS=',' read -ra SERVICES_ARRAY <<< "${{ github.event.inputs.services }}"
+              SERVICES=$(printf '%s\n' "${SERVICES_ARRAY[@]}" | jq -R . | jq -s .)
+            fi
+            
+            IFS=',' read -ra SCENARIOS_ARRAY <<< "${{ github.event.inputs.scenarios }}"
+            SCENARIOS=$(printf '%s\n' "${SCENARIOS_ARRAY[@]}" | jq -R . | jq -s .)
+          else
+            # For automated runs, test core services
+            SERVICES='["node","rust","golang","python","java21"]'
+            SCENARIOS='["c1","c100","c1000"]'
+          fi
+          
+          TESTS='["hello","n-body","pi-digits"]'
+          
+          echo "services=$SERVICES" >> $GITHUB_OUTPUT
+          echo "scenarios=$SCENARIOS" >> $GITHUB_OUTPUT
+          echo "tests=$TESTS" >> $GITHUB_OUTPUT
+          
+          echo "Testing services: $SERVICES"
+          echo "Testing scenarios: $SCENARIOS"
+          echo "Testing endpoints: $TESTS"
+
+  performance-benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    needs: setup-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.setup-matrix.outputs.services) }}
+        test: ${{ fromJson(needs.setup-matrix.outputs.tests) }}
+        scenario: ${{ fromJson(needs.setup-matrix.outputs.scenarios) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          # Install K6
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+          # Install monitoring tools
+          sudo apt-get install -y sysstat htop
+
+      - name: System optimization
+        run: |
+          # Apply system tuning for consistent performance
+          sudo bash utils/sysctl.sh || true
+          
+          # Set CPU governor to performance
+          sudo cpupower frequency-set -g performance || true
+          
+          # Disable swap for consistent memory performance
+          sudo swapoff -a || true
+
+      - name: Setup scenario parameters
+        id: params
+        run: |
+          # Map scenario names to VU counts
+          case "${{ matrix.scenario }}" in
+            "c1")
+              VUS=1
+              ;;
+            "c10")
+              VUS=10
+              ;;
+            "c100")
+              VUS=100
+              ;;
+            "c1000")
+              VUS=1000
+              ;;
+            "c5000")
+              VUS=5000
+              ;;
+            *)
+              VUS=100
+              ;;
+          esac
+          
+          DURATION="${{ github.event.inputs.duration || '60s' }}"
+          
+          echo "vus=$VUS" >> $GITHUB_OUTPUT
+          echo "duration=$DURATION" >> $GITHUB_OUTPUT
+
+      - name: Build service
+        run: |
+          export IMAGE="bench/${{ matrix.service }}"
+          export SERVICE="${{ matrix.service }}"
+          
+          echo "Building $SERVICE service..."
+          docker build -t "$IMAGE" "./services/$SERVICE"
+
+      - name: Run performance benchmark
+        id: benchmark
+        run: |
+          export IMAGE="bench/${{ matrix.service }}"
+          export SERVICE="${{ matrix.service }}"
+          export TEST_MODE="${{ matrix.test }}"
+          export CPUS="2"
+          export MEM="4g"
+          export CPUSET="0-1"
+          export HOST_PORT=18080
+          
+          mkdir -p results/raw
+          mkdir -p monitoring
+
+          # Start system monitoring
+          iostat -x 1 > monitoring/iostat.log &
+          IOSTAT_PID=$!
+          
+          vmstat 1 > monitoring/vmstat.log &
+          VMSTAT_PID=$!
+
+          echo "==> Performance test: ${{ matrix.service }} ${{ matrix.test }} scenario:${{ matrix.scenario }}"
+          
+          # Start service
+          docker compose up -d sut
+          sleep 5
+
+          # Verify service is healthy
+          case "${{ matrix.test }}" in
+            "hello") URL_PATH="/api/hello-world" ;;
+            "n-body") URL_PATH="/api/n-body" ;;
+            "pi-digits") URL_PATH="/api/pi-digits" ;;
+          esac
+
+          TARGET_URL="http://127.0.0.1:${HOST_PORT}${URL_PATH}"
+          
+          # Health check
+          timeout 30 bash -c "until curl -f $TARGET_URL 2>/dev/null; do sleep 1; done"
+
+          # Monitor container resources during test
+          docker stats --no-stream --format "json" > monitoring/docker_stats_before.json
+
+          # Run benchmark
+          OUTPUT_FILE="results/raw/${{ matrix.service }}_${{ matrix.test }}_2vCPU_${{ matrix.scenario }}_$(date +%s).json"
+          
+          VUS=${{ steps.params.outputs.vus }} \
+          DURATION=${{ steps.params.outputs.duration }} \
+          TARGET_URL="$TARGET_URL" \
+            k6 run \
+              --summary-trend-stats="p(50),p(95),p(99),min,max,avg" \
+              --summary-export "${OUTPUT_FILE%.json}_summary.json" \
+              --out json="$OUTPUT_FILE" \
+              k6/http-bench.js
+
+          # Capture final container stats
+          docker stats --no-stream --format "json" > monitoring/docker_stats_after.json
+
+          # Extract key metrics
+          SUMMARY_FILE="${OUTPUT_FILE%.json}_summary.json"
+          if [ -f "$SUMMARY_FILE" ]; then
+            THROUGHPUT=$(jq -r '.metrics.iterations.values.rate // 0' "$SUMMARY_FILE")
+            LATENCY_P95=$(jq -r '.metrics.http_req_duration.values["p(95)"] // 0' "$SUMMARY_FILE")
+            ERROR_RATE=$(jq -r '.metrics.http_req_failed.values.rate // 0' "$SUMMARY_FILE")
+            
+            echo "throughput=$THROUGHPUT" >> $GITHUB_OUTPUT
+            echo "latency_p95=$LATENCY_P95" >> $GITHUB_OUTPUT
+            echo "error_rate=$ERROR_RATE" >> $GITHUB_OUTPUT
+          fi
+
+          # Stop monitoring
+          kill $IOSTAT_PID $VMSTAT_PID || true
+
+          # Clean up
+          docker compose down -v
+
+      - name: Analyze resource usage
+        id: resources
+        run: |
+          # Extract memory usage from Docker stats
+          if [ -f monitoring/docker_stats_after.json ]; then
+            MEMORY_USAGE=$(jq -r '.MemUsage' monitoring/docker_stats_after.json | sed 's/[^0-9.]//g')
+            CPU_USAGE=$(jq -r '.CPUPerc' monitoring/docker_stats_after.json | sed 's/%//g')
+            
+            echo "memory_mb=${MEMORY_USAGE:-0}" >> $GITHUB_OUTPUT
+            echo "cpu_percent=${CPU_USAGE:-0}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Store benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results-${{ matrix.service }}-${{ matrix.test }}-${{ matrix.scenario }}
+          path: |
+            results/
+            monitoring/
+          retention-days: 30
+
+      - name: Check performance thresholds
+        run: |
+          # Check if performance metrics exceed thresholds
+          THROUGHPUT="${{ steps.benchmark.outputs.throughput }}"
+          LATENCY_P95="${{ steps.benchmark.outputs.latency_p95 }}"
+          ERROR_RATE="${{ steps.benchmark.outputs.error_rate }}"
+          MEMORY_MB="${{ steps.resources.outputs.memory_mb }}"
+          
+          WARNINGS=()
+          
+          # Check error rate (should be < 1%)
+          if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
+            WARNINGS+=("High error rate: ${ERROR_RATE}%")
+          fi
+          
+          # Check memory usage
+          if (( $(echo "$MEMORY_MB > ${{ env.MEMORY_THRESHOLD_MB }}" | bc -l) )); then
+            WARNINGS+=("High memory usage: ${MEMORY_MB}MB")
+          fi
+          
+          # Check latency (warn if > 1000ms for p95)
+          if (( $(echo "$LATENCY_P95 > 1000" | bc -l) )); then
+            WARNINGS+=("High latency p95: ${LATENCY_P95}ms")
+          fi
+          
+          if [ ${#WARNINGS[@]} -gt 0 ]; then
+            echo "⚠️ Performance warnings for ${{ matrix.service }}/${{ matrix.test }}/${{ matrix.scenario }}:"
+            for warning in "${WARNINGS[@]}"; do
+              echo "  - $warning"
+            done
+            echo "::warning title=Performance Warning::${{ matrix.service }}/${{ matrix.test }}/${{ matrix.scenario }}: ${WARNINGS[*]}"
+          else
+            echo "✅ Performance metrics within acceptable ranges"
+          fi
+
+  performance-regression-check:
+    name: Check Performance Regression
+    runs-on: ubuntu-latest
+    needs: [setup-matrix, performance-benchmark]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download current results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: perf-results-*
+          merge-multiple: true
+          path: current-results/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Compare with baseline
+        id: compare
+        run: |
+          # Create regression analysis script
+          cat > analyze_regression.mjs << 'EOF'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          const currentResults = [];
+          const currentDir = 'current-results/results/raw';
+          
+          if (fs.existsSync(currentDir)) {
+            const files = fs.readdirSync(currentDir).filter(f => f.endsWith('_summary.json'));
+            
+            for (const file of files) {
+              try {
+                const data = JSON.parse(fs.readFileSync(path.join(currentDir, file), 'utf8'));
+                const [service, test, config, scenario] = file.replace('_summary.json', '').split('_');
+                
+                currentResults.push({
+                  service,
+                  test,
+                  scenario,
+                  throughput: data.metrics?.iterations?.values?.rate || 0,
+                  latency_p95: data.metrics?.http_req_duration?.values?.['p(95)'] || 0,
+                  error_rate: data.metrics?.http_req_failed?.values?.rate || 0,
+                });
+              } catch (error) {
+                console.error(`Error processing ${file}:`, error.message);
+              }
+            }
+          }
+
+          // For now, just log current results (in a real scenario, you'd compare with historical data)
+          console.log('Current Performance Results:');
+          console.log('============================');
+          
+          for (const result of currentResults) {
+            console.log(`${result.service}/${result.test}/${result.scenario}:`);
+            console.log(`  Throughput: ${Math.round(result.throughput)} req/s`);
+            console.log(`  Latency p95: ${result.latency_p95.toFixed(2)} ms`);
+            console.log(`  Error rate: ${(result.error_rate * 100).toFixed(2)}%`);
+            console.log('');
+          }
+
+          // Generate summary for PR comment
+          let summary = '## 📊 Performance Test Results\n\n';
+          summary += '| Service | Test | Scenario | Throughput (req/s) | Latency p95 (ms) | Error Rate (%) |\n';
+          summary += '|---------|------|----------|-------------------|-------------------|----------------|\n';
+          
+          for (const result of currentResults.sort((a, b) => b.throughput - a.throughput)) {
+            summary += `| ${result.service} | ${result.test} | ${result.scenario} | ${Math.round(result.throughput)} | ${result.latency_p95.toFixed(2)} | ${(result.error_rate * 100).toFixed(2)} |\n`;
+          }
+          
+          summary += '\n**Note**: Regression analysis requires historical baseline data.\n';
+          
+          fs.writeFileSync('performance_summary.md', summary);
+          EOF
+
+          node analyze_regression.mjs
+
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            if (fs.existsSync('performance_summary.md')) {
+              const summary = fs.readFileSync('performance_summary.md', 'utf8');
+              
+              // Find existing comment
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+              
+              const botComment = comments.data.find(comment => 
+                comment.user.type === 'Bot' && comment.body.includes('📊 Performance Test Results')
+              );
+              
+              if (botComment) {
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: summary
+                });
+              } else {
+                // Create new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: summary
+                });
+              }
+            }
+
+  performance-trend-analysis:
+    name: Performance Trend Analysis
+    runs-on: ubuntu-latest
+    needs: performance-benchmark
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: perf-results-*
+          merge-multiple: true
+          path: results/
+
+      - name: Store historical data
+        run: |
+          # Create timestamped results for historical tracking
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          mkdir -p historical_results
+          
+          # Copy current results with timestamp
+          if [ -d "results/results/raw" ]; then
+            cp -r results/results/raw "historical_results/results_${TIMESTAMP}"
+          fi
+
+      - name: Generate trend report
+        run: |
+          # Create basic trend analysis
+          cat > trend_report.md << 'EOF'
+          # Performance Trend Report
+          
+          **Generated**: $(date)
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+          
+          ## Summary
+          
+          Performance monitoring completed for core services.
+          
+          ## Key Metrics Tracked
+          
+          - **Throughput**: Requests per second
+          - **Latency**: Response time percentiles (p50, p95, p99)
+          - **Error Rate**: Percentage of failed requests
+          - **Resource Usage**: Memory and CPU consumption
+          
+          ## Alerting Thresholds
+          
+          - Error Rate: > 1%
+          - Memory Usage: > 512MB
+          - Latency p95: > 1000ms
+          
+          ## Historical Data
+          
+          Results are stored in the `historical_results` directory for trend analysis.
+          
+          EOF
+
+      - name: Upload trend data
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-trends-${{ github.run_number }}
+          path: |
+            historical_results/
+            trend_report.md
+          retention-days: 365
+
+  performance-alert:
+    name: Performance Alert
+    runs-on: ubuntu-latest
+    needs: [performance-benchmark]
+    if: failure()
+    steps:
+      - name: Send Alert
+        run: |
+          echo "🚨 Performance monitoring detected issues!"
+          echo "Check the workflow logs for detailed information."
+          echo "Failed jobs may indicate performance regressions or service issues."
+          
+          # In a real scenario, you might send alerts to Slack, email, or other notification systems
+          # Example: curl -X POST -H 'Content-type: application/json' --data '{"text":"Performance alert!"}' $SLACK_WEBHOOK_URL
