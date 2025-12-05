@@ -141,11 +141,36 @@ jobs:
               sudo apt-get install -y k6
             fi
 
-            # Apply system tuning
-            make tune || true
+            # Ensure Docker is accessible
+            if ! docker ps &>/dev/null 2>&1; then
+              echo "Docker not accessible, checking..."
+              # If user is in docker group but session doesn't have it, use sg
+              if id -nG | grep -q docker && command -v sg &>/dev/null; then
+                echo "Using sg to access docker group..."
+                # Create wrapper script using printf to avoid YAML heredoc issues
+                printf '#!/bin/bash\nexport DEPLOY_PATH="$1"\ncd "$DEPLOY_PATH"\ndocker compose build\nmake tune || true\nmake run > benchmark.log 2>&1\n' > /tmp/benchmark-wrapper.sh
+                chmod +x /tmp/benchmark-wrapper.sh
+                nohup sg docker -c "/tmp/benchmark-wrapper.sh '\$DEPLOY_PATH'" </dev/null >/dev/null 2>&1 &
+                BENCHMARK_PID=$!
+              else
+                echo "Using sudo for docker access..."
+                docker compose build || sudo docker compose build
+                make tune || true
+                nohup bash -c "cd \$DEPLOY_PATH && sudo -E make run > benchmark.log 2>&1" </dev/null >/dev/null 2>&1 &
+                BENCHMARK_PID=$!
+              fi
+            else
+              # Docker is accessible normally
+              echo "Building Docker images..."
+              docker compose build
 
-            # Run benchmark suite in a detached process
-            nohup make run > benchmark.log 2>&1 </dev/null &
+              # Apply system tuning
+              make tune || true
+
+              # Run benchmark suite in a detached process
+              nohup bash -c "cd \$DEPLOY_PATH && make run > benchmark.log 2>&1" </dev/null >/dev/null 2>&1 &
+              BENCHMARK_PID=$!
+            fi
             BENCHMARK_PID=$!
             echo "Benchmark suite started in background (PID: \$BENCHMARK_PID)"
             echo "Logs are being written to: \$DEPLOY_PATH/benchmark.log"
