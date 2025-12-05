@@ -1,0 +1,163 @@
+name: Deploy benchmark
+
+on:
+  push:
+    branches:
+      - main
+      - joao-dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.HETZNER_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.HETZNER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Hetzner server
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          DEPLOY_PATH: ${{ secrets.HETZNER_DEPLOY_PATH || '/opt/rest-api-benchmark' }}
+        run: |
+          ssh $HETZNER_USER@$HETZNER_HOST "DEPLOY_PATH='$DEPLOY_PATH' bash -s" << ENDSSH
+            set -e
+
+            # Create deployment directory if it doesn't exist
+            mkdir -p "\$DEPLOY_PATH"
+            cd "\$DEPLOY_PATH"
+
+            # Initialize git repo if needed, or pull latest changes
+            if [ ! -d .git ]; then
+              git clone https://github.com/${{ github.repository }}.git .
+            else
+              git fetch origin
+              git reset --hard origin/${{ github.ref_name }}
+            fi
+
+            # Pull latest changes
+            git pull origin ${{ github.ref_name }} || true
+
+            # Install Docker if not already installed
+            if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+
+              # Remove old versions
+              sudo apt-get remove -y docker docker-engine docker.io containerd runc || true
+
+              # Install prerequisites
+              sudo apt-get update
+              sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+              # Add Docker's official GPG key
+              sudo install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+              sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+              # Set up the repository
+              echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+              # Install Docker Engine, CLI, and Docker Compose
+              sudo apt-get update
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+              # Add current user to docker group (if not root)
+              if [ "$USER" != "root" ]; then
+                sudo usermod -aG docker $USER || true
+              fi
+
+              # Start Docker service
+              sudo systemctl enable docker
+              sudo systemctl start docker
+
+              echo "Docker installed successfully"
+            else
+              echo "Docker is already installed"
+            fi
+
+            # Verify Docker Compose is available
+            if ! docker compose version &> /dev/null; then
+              echo "Docker Compose not found, installing..."
+              sudo apt-get update
+              sudo apt-get install -y docker-compose-plugin
+            fi
+
+            # Verify installation
+            docker --version
+            docker compose version
+
+            # Stop existing containers
+            docker compose down -v || true
+
+            # Clean up old images to save space
+            docker image prune -f
+
+            echo "Deployment completed successfully"
+          ENDSSH
+
+      - name: Run benchmark suite
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+          DEPLOY_PATH: ${{ secrets.HETZNER_DEPLOY_PATH || '/opt/rest-api-benchmark' }}
+        run: |
+          ssh $HETZNER_USER@$HETZNER_HOST "DEPLOY_PATH='$DEPLOY_PATH' bash -s" << ENDSSH
+            set -e
+            cd "\$DEPLOY_PATH"
+
+            # Install build tools if not available
+            if ! command -v make &> /dev/null; then
+              echo "Installing build tools..."
+              sudo apt-get update
+              sudo apt-get install -y build-essential
+            fi
+
+            # Install jq if not available (needed for benchmark script)
+            if ! command -v jq &> /dev/null; then
+              echo "Installing jq..."
+              sudo apt-get update
+              sudo apt-get install -y jq
+            fi
+
+            # Install k6 if not available (needed for load testing)
+            if ! command -v k6 &> /dev/null; then
+              echo "Installing k6..."
+              # Use official k6 installation method for Debian/Ubuntu
+              sudo gpg -k || true
+              sudo gpg --batch --no-tty --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+              echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+              sudo apt-get update
+              sudo apt-get install -y k6
+            fi
+
+            # Apply system tuning
+            make tune || true
+
+            # Run benchmark suite in a detached process
+            nohup make run > benchmark.log 2>&1 </dev/null &
+            BENCHMARK_PID=$!
+            echo "Benchmark suite started in background (PID: \$BENCHMARK_PID)"
+            echo "Logs are being written to: \$DEPLOY_PATH/benchmark.log"
+            echo "You can check progress with: tail -f \$DEPLOY_PATH/benchmark.log"
+            echo "You can check if it's still running with: ps -p \$BENCHMARK_PID"
+          ENDSSH
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Deployment to Hetzner server completed successfully"
+          echo "Server: ${{ secrets.HETZNER_HOST }}"
+          echo "Path: ${{ secrets.HETZNER_DEPLOY_PATH || '/opt/rest-api-benchmark' }}"
+          if [ "${{ github.event.inputs.run_benchmark }}" == "true" ]; then
+            echo "✅ Benchmark suite executed"
+          fi
